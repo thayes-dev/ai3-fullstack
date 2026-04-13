@@ -1,0 +1,10 @@
+# Student-owned files: always keep the student's version on merge.
+# When the instructor pushes updates, these files auto-resolve to
+# keep whatever the student has locally. No merge conflicts.
+#
+# Requires one-time setup: git config merge.ours.driver true
+
+.streamlit/config.toml merge=ours
+.streamlit/static/** merge=ours
+student_config.yaml merge=ours
+app/pages/1_Home.py merge=ours

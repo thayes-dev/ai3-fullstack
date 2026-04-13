@@ -1,0 +1,30 @@
+# API keys and secrets — NEVER commit
+.env
+.env.local
+.streamlit/secrets.toml
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Student workspace
+my_work/
+notebooks/my_work/
+
+# Runtime artifacts
+logs/
+feedback/*.json
+cache/
+
+# IDE / OS
+.DS_Store
+.mcp.json
+.ipynb_checkpoints/
+
+# NOTE: chroma_db/ is deliberately NOT ignored.
+# It must be committed for Streamlit Cloud deployment.

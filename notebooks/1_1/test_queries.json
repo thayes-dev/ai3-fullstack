@@ -1,0 +1,44 @@
+{
+  "description": "Validated test queries for Session 1.1 — these were tested against the actual Northbrook corpus and show genuine differences between retrieval strategies.",
+  "validated_date": "2026-04-13",
+  "examples": {
+    "hyde_wins": [
+      {
+        "query": "Who is the CEO and what are their priorities?",
+        "why_hyde_wins": "Naive returns a motivational CEO memo excerpt ('this team has met or exceeded its goals'). HyDE returns the actual '2025 Strategic Priorities' section from the board meeting where Sarah Chen outlines three concrete priorities. Completely different result sets (0/3 overlap).",
+        "naive_top_source": "memo_ceo_annual_kickoff.md",
+        "naive_top_score": 0.400,
+        "hyde_top_source": "board_meeting_q4_2024.md",
+        "hyde_top_score": 0.482,
+        "teaching_point": "The hypothetical answer sounds like a leadership/strategy document, pulling the embedding toward board minutes rather than informal memos."
+      },
+      {
+        "query": "What are the performance review procedures?",
+        "why_hyde_wins": "Naive's 3rd result is from expense_policy.md — completely irrelevant! The word 'procedures' and 'review' matched incidentally. HyDE keeps all results in employee_handbook.md where the actual review procedures live.",
+        "naive_top_source": "employee_handbook.md",
+        "naive_bad_result": "expense_policy.md (rank 3, score 0.298) — wrong source entirely",
+        "hyde_top_source": "employee_handbook.md",
+        "hyde_top_score": 0.583,
+        "teaching_point": "HyDE eliminates false matches by generating answer-like text that sounds like HR procedures, not expense policies."
+      }
+    ],
+    "enrichment_wins": [
+      {
+        "query": "What happened at the Q4 board meeting?",
+        "why_enrichment_wins": "Enrichment beats both naive AND HyDE. HyDE actually MISSES the Q4 board meeting document because the hypothetical answer hallucinated about a merger, pulling the embedding toward financial content. Enrichment correctly retrieves both Q3 and Q4 board meetings because the generated questions for those chunks match 'What happened at the Q4 board meeting?' directly.",
+        "naive_avg_score": 0.442,
+        "hyde_avg_score": 0.448,
+        "enriched_avg_score": 0.470,
+        "hyde_failure": "HyDE pulled Q3 board meeting + financial_report_q3 instead of the actual Q4 board meeting. The hypothetical answer was about a made-up merger approval.",
+        "teaching_point": "HyDE amplifies whatever signal is in the hypothetical answer. If the hypothetical answer is about the wrong thing, retrieval gets worse. Enrichment is more stable because the questions are grounded in the actual chunk content."
+      }
+    ],
+    "general_queries_for_class": [
+      "What is the vacation policy?",
+      "How does the company handle remote work requests?",
+      "How do I set up VPN access?",
+      "What are the expense reimbursement rules?",
+      "What security measures does the company have?"
+    ]
+  }
+}

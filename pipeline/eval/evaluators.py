@@ -18,13 +18,17 @@ Session 1.2: We build two evaluators together in class.
       "Did retrieval pull the expected source document?"
 
   Pattern B (LLM-as-judge, ~25 lines):
-      answer_addresses_question(input, output, expected) -> bool
+      answer_addresses_question(input, output, expected) -> dict
       "Does the generated answer align with the expected answer?"
+      Uses STRUCTURED OUTPUT (Pydantic + tool_use) — callback to AI-2 Session 1.2.
 
 Students: read the docstrings, then fill in the function bodies during class.
 """
 
+from typing import Literal
+
 import anthropic
+from pydantic import BaseModel, Field
 
 
 # Claude client for the LLM judge. Haiku 4.5 is ~10x cheaper than Sonnet and
@@ -63,34 +67,41 @@ def retrieval_hit(output: dict, expected: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Pattern B: LLM-as-judge evaluator
+# Pattern B: LLM-as-judge with STRUCTURED OUTPUT
 # ---------------------------------------------------------------------------
-# Judge prompt template — the instruction we hand the Claude judge.
-# Placeholders get filled in by the evaluator at call time.
+# Callback to AI-2 Session 1.2: we learned there that parsing LLM text output
+# with string-munging is brittle. Pydantic + a tool-use schema forces the
+# model to return a shape we can trust — zero string parsing required.
+class JudgeVerdict(BaseModel):
+    """The judge's structured verdict. Pydantic validates the shape."""
+
+    verdict: Literal["PASS", "FAIL"]
+    reason: str = Field(description="Brief justification for the verdict")
+
+
+# Judge prompt template. Note: no format instructions. The schema (tool_use)
+# is the contract — the prompt only has to ask for the judgment.
 JUDGE_TEMPLATE = """You are grading a RAG system's answer.
 
 Question: {prompt}
 Expected answer: {expected}
 Generated answer: {response}
 
-Does the generated answer substantively address the question
-AND align with the expected answer?
-
-Respond with exactly one line:
-PASS: <brief reason>
-or
-FAIL: <brief reason>"""
+Decide whether the generated answer substantively addresses the question
+AND aligns with the expected answer. Provide a brief reason."""
 
 
-def answer_addresses_question(input: dict, output: dict, expected: dict) -> bool:
+def answer_addresses_question(input: dict, output: dict, expected: dict) -> dict:
     """Does the generated answer align with the expected answer?
 
-    Uses Claude Haiku 4.5 as the judge. The judge sees the question, the
-    ground-truth expected answer, AND the generated answer — then returns
-    PASS or FAIL based on alignment.
+    Uses Claude Haiku 4.5 as the judge via STRUCTURED OUTPUT. The judge is
+    handed a `record_verdict` tool whose schema is the `JudgeVerdict` Pydantic
+    model — Claude can only respond by "calling" the tool with a valid verdict.
+    No brittle PASS/FAIL string parsing.
 
-    This is the "LLM-as-judge" pattern: cheaper and more scalable than human
-    review, more semantic than string matching.
+    Returning a dict (not bool) lets Phoenix log score + label + explanation
+    for every row — click any failed row in the UI and see WHY the judge
+    rejected it.
 
     Args:
         input: The dataset input dict. Has a `question` key.
@@ -98,14 +109,18 @@ def answer_addresses_question(input: dict, output: dict, expected: dict) -> bool
         expected: The ground-truth dict. Has an `expected_answer` key.
 
     Returns:
-        True if the judge returns PASS, False otherwise.
+        Dict shaped for Phoenix: {"score", "label", "explanation"}.
+        Phoenix renders all three in the experiment results table.
 
     Hint for students:
-        1. Format JUDGE_TEMPLATE with the question, expected, and generated answer.
+        1. Format JUDGE_TEMPLATE with question, expected, generated answer.
            (Cap the generated answer at 2000 chars to control token cost.)
-        2. Call the Claude Haiku 4.5 model with max_tokens=100.
-        3. Parse the first line of the response — if it starts with "PASS"
-           (case-insensitive), return True. Otherwise return False.
+        2. Call Claude Haiku 4.5 with the record_verdict tool forced via
+           tool_choice={"type": "tool", "name": "record_verdict"}.
+           The tool's input_schema is JudgeVerdict.model_json_schema().
+        3. Pull the tool_use content block from result.content, then
+           validate it with JudgeVerdict(**tool_block.input).
+        4. Return {"score": 1 if PASS else 0, "label": verdict, "explanation": reason}.
     """
     # We'll build this together in class.
     pass

@@ -50,7 +50,7 @@ def _run_pipeline(question: str, retrieve_fn) -> dict:
         as the `output` parameter.
     """
     # Step 1: retrieval — get the top_k chunks for this question
-    chunks = retrieve_fn(question, top_k=TOP_K)
+    chunks = retrieve_fn(question, TOP_K)  # positional — hyde uses n_results, naive uses top_k
 
     # Step 2: prompt assembly — format chunks as a context block for Claude
     system_prompt, user_message = build_prompt(question, chunks)

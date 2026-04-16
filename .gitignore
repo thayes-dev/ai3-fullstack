@@ -28,3 +28,7 @@ cache/
 
 # NOTE: chroma_db/ is deliberately NOT ignored.
 # It must be committed for Streamlit Cloud deployment.
+
+
+# Instructor-only dry-run scripts (never published)
+_dry_run*.py

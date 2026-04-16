@@ -1,44 +1,102 @@
 {
-  "description": "Validated test queries for Session 1.1 — these were tested against the actual Northbrook corpus and show genuine differences between retrieval strategies.",
-  "validated_date": "2026-04-13",
+  "description": "Validated test queries for Session 1.1 — tested against the actual Northbrook corpus with the corrected 'one row per question' enrichment implementation.",
+  "validated_date": "2026-04-15",
+  "implementation_notes": {
+    "enrichment_pattern": "One row per question in the vector store. Each chunk generates 3 questions. Each question embedded separately (pure question-space). documents field = original chunk. metadata has chunk_index and source_question.",
+    "retrieval_pattern": "Over-fetch n*3 rows, dedup by chunk_index keeping best-scoring match per chunk, return top-N unique chunks.",
+    "temperature": 0,
+    "n_questions_per_chunk": 3
+  },
+  "scorecard": {
+    "total_queries": 10,
+    "naive_wins": 0,
+    "hyde_wins": 3,
+    "enriched_wins": 7
+  },
   "examples": {
     "hyde_wins": [
       {
-        "query": "Who is the CEO and what are their priorities?",
-        "why_hyde_wins": "Naive returns a motivational CEO memo excerpt ('this team has met or exceeded its goals'). HyDE returns the actual '2025 Strategic Priorities' section from the board meeting where Sarah Chen outlines three concrete priorities. Completely different result sets (0/3 overlap).",
-        "naive_top_source": "memo_ceo_annual_kickoff.md",
-        "naive_top_score": 0.400,
-        "hyde_top_source": "board_meeting_q4_2024.md",
-        "hyde_top_score": 0.482,
-        "teaching_point": "The hypothetical answer sounds like a leadership/strategy document, pulling the embedding toward board minutes rather than informal memos."
+        "query": "What is the vacation policy?",
+        "naive_avg": 0.475,
+        "hyde_avg": 0.698,
+        "enriched_avg": 0.604,
+        "why_hyde_wins": "Single-topic lookup with a concentrated answer in one document. HyDE's hypothetical answer puts the query right in policy-document space — it dominates when there's one clear answer location.",
+        "teaching_point": "HyDE excels at single-topic lookups where the answer lives in one coherent document."
       },
       {
-        "query": "What are the performance review procedures?",
-        "why_hyde_wins": "Naive's 3rd result is from expense_policy.md — completely irrelevant! The word 'procedures' and 'review' matched incidentally. HyDE keeps all results in employee_handbook.md where the actual review procedures live.",
-        "naive_top_source": "employee_handbook.md",
-        "naive_bad_result": "expense_policy.md (rank 3, score 0.298) — wrong source entirely",
-        "hyde_top_source": "employee_handbook.md",
-        "hyde_top_score": 0.583,
-        "teaching_point": "HyDE eliminates false matches by generating answer-like text that sounds like HR procedures, not expense policies."
+        "query": "What are the expense reimbursement rules?",
+        "naive_avg": 0.514,
+        "hyde_avg": 0.683,
+        "enriched_avg": 0.640,
+        "why_hyde_wins": "Similar to vacation policy — expense_policy.md contains the full answer. HyDE's hypothetical answer about expense reimbursement lands directly in that document's embedding neighborhood.",
+        "teaching_point": "Single-document policy questions favor HyDE."
+      },
+      {
+        "query": "What are the three main types of paid time off Northbrook offers?",
+        "naive_avg": 0.586,
+        "hyde_avg": 0.660,
+        "enriched_avg": 0.641,
+        "why_hyde_wins": "Enumeration query about a single policy. HyDE's hypothetical answer is specific and matches the policy doc tightly.",
+        "teaching_point": "Specific enumeration + single document = HyDE territory. Enrichment still beats naive but doesn't overtake HyDE."
       }
     ],
     "enrichment_wins": [
       {
         "query": "What happened at the Q4 board meeting?",
-        "why_enrichment_wins": "Enrichment beats both naive AND HyDE. HyDE actually MISSES the Q4 board meeting document because the hypothetical answer hallucinated about a merger, pulling the embedding toward financial content. Enrichment correctly retrieves both Q3 and Q4 board meetings because the generated questions for those chunks match 'What happened at the Q4 board meeting?' directly.",
-        "naive_avg_score": 0.442,
-        "hyde_avg_score": 0.448,
-        "enriched_avg_score": 0.470,
-        "hyde_failure": "HyDE pulled Q3 board meeting + financial_report_q3 instead of the actual Q4 board meeting. The hypothetical answer was about a made-up merger approval.",
-        "teaching_point": "HyDE amplifies whatever signal is in the hypothetical answer. If the hypothetical answer is about the wrong thing, retrieval gets worse. Enrichment is more stable because the questions are grounded in the actual chunk content."
+        "naive_avg": 0.442,
+        "hyde_avg": 0.395,
+        "enriched_avg": 0.622,
+        "why_enrichment_wins": "HyDE hallucinates (generates a hypothetical about a fake merger), which pulls embedding toward unrelated content. Enrichment's generated questions for the Q4 board meeting chunks directly match 'What happened at the Q4 board meeting?' because that's literally a question the chunk answers.",
+        "teaching_point": "HyDE can fail catastrophically when the hypothetical answer hallucinates. Enrichment is more stable because generated questions are grounded in real chunk content."
+      },
+      {
+        "query": "What was discussed about office relocation?",
+        "naive_avg": 0.487,
+        "hyde_avg": 0.479,
+        "enriched_avg": 0.670,
+        "why_enrichment_wins": "Office relocation is discussed across multiple documents (the memo, Q3 board meeting, Q4 board meeting). Enrichment's generated questions catch the topic in all three docs. HyDE finds the memo but misses the board meeting context.",
+        "teaching_point": "Multi-document topics favor enrichment — generated questions cast a wider net."
+      },
+      {
+        "query": "What's the timeline for the office move and what do I need to do to prepare?",
+        "naive_avg": 0.600,
+        "hyde_avg": 0.655,
+        "enriched_avg": 0.715,
+        "why_enrichment_wins": "Compound query — timeline is in one doc, preparation details in another. Enrichment pulls from multiple sources (board meetings, CEO memo, relocation memo). Highest absolute score of the whole set (0.715).",
+        "teaching_point": "Multi-part questions where the answer spans documents are enrichment's strongest territory."
+      },
+      {
+        "query": "Who is the CEO and what are their priorities?",
+        "naive_avg": 0.385,
+        "hyde_avg": 0.373,
+        "enriched_avg": 0.476,
+        "why_enrichment_wins": "Two-part question (identity + priorities). Generated questions on the CEO memo and HR committee notes pick up both aspects. HyDE actually gets WORSE than naive here (0.373 vs 0.385) because the hypothetical conflates different docs.",
+        "teaching_point": "Compound queries benefit from enrichment's multi-match coverage. Watch: HyDE can be worse than naive."
+      },
+      {
+        "query": "How do I set up VPN access?",
+        "naive_avg": 0.501,
+        "hyde_avg": 0.526,
+        "enriched_avg": 0.616,
+        "why_enrichment_wins": "Procedural how-to query. Generated questions like 'What is the name of the new VPN provider?' directly match user-style questions. All three methods find security_update.md, but enrichment scores highest because the match is question-to-question.",
+        "teaching_point": "Procedural how-to queries favor enrichment when the corpus has chunks describing those procedures."
+      },
+      {
+        "query": "What are the performance review procedures?",
+        "naive_avg": 0.430,
+        "hyde_avg": 0.510,
+        "enriched_avg": 0.598,
+        "why_enrichment_wins": "Naive pulls expense_policy.md at rank 3 (wrong source). HyDE also has expense_policy in top 3. Enrichment gets the employee_handbook at top but still has contamination. Enrichment wins by score margin, not clean sources.",
+        "teaching_point": "Even enrichment can have contamination in top-N. Evaluation (Session 1.2) is how you catch this."
+      },
+      {
+        "query": "How does the company handle remote work requests?",
+        "naive_avg": 0.450,
+        "hyde_avg": 0.589,
+        "enriched_avg": 0.612,
+        "why_enrichment_wins": "Close race with HyDE. Both find the remote_work_policy, but enrichment scores slightly higher because the generated questions directly match 'how does the company handle X' phrasing.",
+        "teaching_point": "When multiple methods find the right doc, scores become the tiebreaker. Higher scores = more confident match."
       }
-    ],
-    "general_queries_for_class": [
-      "What is the vacation policy?",
-      "How does the company handle remote work requests?",
-      "How do I set up VPN access?",
-      "What are the expense reimbursement rules?",
-      "What security measures does the company have?"
     ]
   }
 }

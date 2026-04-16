@@ -23,6 +23,28 @@ To explore: print `len(GOLDEN_SET)`, inspect `[q["category"] for q in GOLDEN_SET
 or filter by difficulty: `[q for q in GOLDEN_SET if q["difficulty"] == "easy"]`.
 """
 
+import os
+
+
+def get_dataset_name(base: str = "northbrook_golden_v1") -> str:
+    """Return the per-student Phoenix dataset name.
+
+    Phoenix datasets live at the WORKSPACE level, not the project level — so
+    classmates sharing a workspace would collide on any hardcoded name. We
+    suffix with PHOENIX_PROJECT_NAME so each student gets their own isolated
+    dataset.
+
+    Example:
+        PHOENIX_PROJECT_NAME="ai3-tyler" → "northbrook_golden_v1__tyler"
+        PHOENIX_PROJECT_NAME unset       → "northbrook_golden_v1__local"
+
+    Using a helper (rather than hardcoding the suffix everywhere) means the
+    naming scheme lives in one place — easy to change if we version the set.
+    """
+    project = os.environ.get("PHOENIX_PROJECT_NAME", "local")
+    suffix = project.removeprefix("ai3-") if project.startswith("ai3-") else project
+    return f"{base}__{suffix}"
+
 
 GOLDEN_SET = [
     # 1. Single-topic lookup in vacation_policy_2025.md (HyDE winner in 1.1)

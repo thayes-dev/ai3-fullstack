@@ -27,9 +27,13 @@ pointing at the version they ran against.
 from dotenv import load_dotenv
 from phoenix.client import Client
 
-from pipeline.eval.golden_set import GOLDEN_SET
+from pipeline.eval.golden_set import GOLDEN_SET, get_dataset_name
 
 load_dotenv()
+
+# Namespaced by PHOENIX_PROJECT_NAME so classmates sharing a workspace don't
+# collide on the dataset name. See get_dataset_name() for details.
+DATASET_NAME = get_dataset_name()
 
 
 # Parallel lists — Phoenix keys them together by list index.
@@ -61,8 +65,9 @@ metadata = [
 def main() -> None:
     client = Client()
 
+    print(f"→ Pushing golden set as dataset: {DATASET_NAME}")
     dataset = client.datasets.create_dataset(
-        name="northbrook_golden_v1",
+        name=DATASET_NAME,
         dataset_description=(
             "Seed golden set for AI-3 RAG evaluation. 10 queries across "
             "policy_lookup, multi_doc, compound, and procedural categories. "
@@ -73,10 +78,9 @@ def main() -> None:
         metadata=metadata,
     )
 
-    print(f"✓ Uploaded dataset with {len(GOLDEN_SET)} queries")
-    print(f"  Name: {dataset.name if hasattr(dataset, 'name') else 'northbrook_golden_v1'}")
+    print(f"✓ Uploaded {len(GOLDEN_SET)} queries as: {DATASET_NAME}")
     print(f"  View at: https://app.phoenix.arize.com")
-    print(f"  Navigate to: Datasets → northbrook_golden_v1")
+    print(f"  Navigate to: Datasets → {DATASET_NAME}")
 
 
 if __name__ == "__main__":

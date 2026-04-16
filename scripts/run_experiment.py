@@ -25,10 +25,14 @@ What to look for in the Phoenix UI after this finishes:
 from dotenv import load_dotenv
 from phoenix.client import Client
 
+from pipeline.eval.golden_set import get_dataset_name
 from pipeline.eval.tasks import naive_task, hyde_task
 from pipeline.eval.evaluators import retrieval_hit, answer_addresses_question
 
 load_dotenv()
+
+# Match the namespaced name from push_golden_set.py.
+DATASET_NAME = get_dataset_name()
 
 
 # The model students are running against — used in experiment naming so
@@ -54,7 +58,8 @@ def main() -> None:
     client = Client()
 
     # Fetch the dataset we uploaded with push_golden_set.py
-    dataset = client.datasets.get_dataset(dataset="northbrook_golden_v1")
+    print(f"→ Using dataset: {DATASET_NAME}")
+    dataset = client.datasets.get_dataset(dataset=DATASET_NAME)
 
     for label, task_fn in PIPELINES:
         experiment_name = f"{label} / {MODEL_NAME}"

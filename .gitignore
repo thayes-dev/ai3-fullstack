@@ -30,5 +30,6 @@ cache/
 # It must be committed for Streamlit Cloud deployment.
 
 
-# Instructor-only dry-run scripts (never published)
+# Instructor-only files (local only, never pushed to students)
+*_instructor*
 _dry_run*.py

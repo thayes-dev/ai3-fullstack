@@ -12,10 +12,13 @@ Usage:
     result = call_claude_with_usage("What is prompt engineering?")
 """
 
+from pathlib import Path
+
 import anthropic
 from dotenv import load_dotenv
 
-load_dotenv()
+_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(_ENV_PATH)
 
 
 def call_claude(

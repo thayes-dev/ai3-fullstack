@@ -7,4 +7,4 @@
 .streamlit/config.toml merge=ours
 .streamlit/static/** merge=ours
 student_config.yaml merge=ours
-app/pages/1_Home.py merge=ours
+app/branding.py merge=ours

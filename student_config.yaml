@@ -1,0 +1,7 @@
+# Student Configuration -- Personalize your app here!
+# The instructor will NEVER modify this file.
+# TIP: Always wrap values in double quotes to avoid YAML parsing issues.
+
+app_name: "Northbrook Q&A"
+tagline: "Ask questions about Northbrook Partners"
+welcome_message: "Hello! Ask me anything about Northbrook Partners."

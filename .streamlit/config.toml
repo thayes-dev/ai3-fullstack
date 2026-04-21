@@ -1,0 +1,10 @@
+[server]
+enableStaticServing = true
+
+[theme]
+# Uncomment and edit any line below to customize your app's appearance
+# primaryColor = "#FF4B4B"
+# backgroundColor = "#FFFFFF"
+# secondaryBackgroundColor = "#F0F2F6"
+# textColor = "#262730"
+# font = "sans serif"

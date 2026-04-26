@@ -1,4 +1,4 @@
-"""
+﻿"""
 Northbrook Q&A -- Streamlit Chat Application
 
 Session 2.1: Build a stateful chat application with RAG integration.
@@ -58,7 +58,18 @@ apply_branding(config)
 #       st.session_state.current_chat = chat_id
 #       st.session_state.conversations[chat_id] = []
 # ============================================================
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "conversations" not in st.session_state:
+    st.session_state.conversations = {}
+if "current_chat" not in st.session_state:
+    st.session_state.current_chat = None
 
+# Auto-create first conversation if none exists
+if st.session_state.current_chat is None:
+    chat_id = "chat_0"
+    st.session_state.current_chat = chat_id
+    st.session_state.conversations[chat_id] = []
 
 # ============================================================
 # STEP 2: Sidebar — Chat History (PROVIDED — do not modify)
@@ -177,3 +188,18 @@ def display_sources(sources: list[dict]):
 #          st.session_state.messages.copy()
 #      )
 # ============================================================
+if prompt := st.chat_input("Ask a question..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    response = get_response(prompt, st.session_state.messages)
+
+    with st.chat_message("assistant"):
+        st.markdown(response.answer)
+        display_sources(response.sources)
+
+    st.session_state.messages.append({"role": "assistant", "content": response.answer})
+    st.session_state.conversations[st.session_state.current_chat] = (
+        st.session_state.messages.copy()
+    )

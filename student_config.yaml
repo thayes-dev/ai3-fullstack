@@ -2,6 +2,6 @@
 # The instructor will NEVER modify this file.
 # TIP: Always wrap values in double quotes to avoid YAML parsing issues.
 
-app_name: "Northbrook Q&A"
-tagline: "Ask questions about Northbrook Partners"
-welcome_message: "Hello! Ask me anything about Northbrook Partners."
+app_name: "Falcon Logistics"
+tagline: "Ask anything about your freight operations"
+welcome_message: "Hi, I'm Frank - your Falcon Logistics assistant. Ask me about shipment policies, carrier guidelines, freight rates, or anything else related to your operations."

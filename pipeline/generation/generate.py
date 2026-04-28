@@ -50,6 +50,8 @@ def call_claude(
         messages=[{"role": "user", "content": prompt}],
     )
 
+    if not response.content:
+        return "I'm sorry, I couldn't generate a response. Please try again."
     return response.content[0].text
 
 
@@ -85,8 +87,10 @@ def call_claude_with_usage(prompt: str, **kwargs) -> dict:
         messages=[{"role": "user", "content": prompt}],
     )
 
+    text = response.content[0].text if response.content else "I'm sorry, I couldn't generate a response. Please try again."
+
     return {
-        "text": response.content[0].text,
+        "text": text,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
         "model": response.model,

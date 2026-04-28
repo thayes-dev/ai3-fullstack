@@ -28,6 +28,22 @@ from app.branding import apply_branding
 from app.rag import get_response
 
 # ============================================================
+# DEPLOYMENT TODO (Session 4.1)
+# ============================================================
+# When deploying to Streamlit Community Cloud, API keys must NOT
+# be stored in secrets — anyone with the URL could burn your credits.
+# Instead, add a sidebar input that lets each visitor enter their own key:
+#
+#   api_key = st.sidebar.text_input("Anthropic API Key", type="password")
+#   if not api_key:
+#       st.warning("Enter your Anthropic API key to start chatting.")
+#       st.stop()
+#
+# Pass the key to your pipeline (e.g., via st.session_state).
+# See DR-017 for the full pattern.
+# ============================================================
+
+# ============================================================
 # LOAD CONFIG & APPLY BRANDING
 # ============================================================
 with open(_PROJECT_ROOT / "student_config.yaml") as f:
@@ -58,18 +74,7 @@ apply_branding(config)
 #       st.session_state.current_chat = chat_id
 #       st.session_state.conversations[chat_id] = []
 # ============================================================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "conversations" not in st.session_state:
-    st.session_state.conversations = {}
-if "current_chat" not in st.session_state:
-    st.session_state.current_chat = None
 
-# Auto-create first conversation if none exists
-if st.session_state.current_chat is None:
-    chat_id = "chat_0"
-    st.session_state.current_chat = chat_id
-    st.session_state.conversations[chat_id] = []
 
 # ============================================================
 # STEP 2: Sidebar — Chat History (PROVIDED — do not modify)
@@ -164,9 +169,32 @@ def display_sources(sources: list[dict]):
 # ============================================================
 # STEP 5: Chat Input Handler
 # ============================================================
+# TODO: Implement the chat input handler
+#
+# Use: if prompt := st.chat_input("Ask a question..."):
+#
+# Inside the block:
+#   a. Append the user message to st.session_state.messages
+#      Format: {"role": "user", "content": prompt}
+#   b. Display the user message with:
+#      with st.chat_message("user"):
+#          st.markdown(prompt)
+#   c. Call get_response(prompt, st.session_state.messages) to get a response
+#      response.answer = the text reply
+#      response.sources = list of source dicts (may be empty)
+#   d. Display the assistant message with:
+#      with st.chat_message("assistant"):
+#          st.markdown(response.answer)
+#          display_sources(response.sources)
+#   e. Append the assistant message to st.session_state.messages
+#      Format: {"role": "assistant", "content": response.answer}
+#   f. Save the conversation:
+#      st.session_state.conversations[st.session_state.current_chat] = (
+#          st.session_state.messages.copy()
+#      )
+# ============================================================
 if prompt := st.chat_input("Ask a question..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-
     with st.chat_message("user"):
         st.markdown(prompt)
 
@@ -176,10 +204,7 @@ if prompt := st.chat_input("Ask a question..."):
         st.markdown(response.answer)
         display_sources(response.sources)
 
-    st.session_state.messages.append(
-        {"role": "assistant", "content": response.answer}
-    )
-
+    st.session_state.messages.append({"role": "assistant", "content": response.answer})
     st.session_state.conversations[st.session_state.current_chat] = (
         st.session_state.messages.copy()
     )

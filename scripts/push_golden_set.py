@@ -25,6 +25,12 @@ Note on history-field updates: append-only means edits to EXISTING rows
 the dataset in the Phoenix UI and re-run this script.
 """
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from dotenv import load_dotenv
 import httpx
 from phoenix.client import Client

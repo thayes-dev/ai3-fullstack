@@ -28,6 +28,22 @@ from app.branding import apply_branding
 from app.rag import get_response
 
 # ============================================================
+# DEPLOYMENT TODO (Session 4.1)
+# ============================================================
+# When deploying to Streamlit Community Cloud, API keys must NOT
+# be stored in secrets — anyone with the URL could burn your credits.
+# Instead, add a sidebar input that lets each visitor enter their own key:
+#
+#   api_key = st.sidebar.text_input("Anthropic API Key", type="password")
+#   if not api_key:
+#       st.warning("Enter your Anthropic API key to start chatting.")
+#       st.stop()
+#
+# Pass the key to your pipeline (e.g., via st.session_state).
+# See DR-017 for the full pattern.
+# ============================================================
+
+# ============================================================
 # LOAD CONFIG & APPLY BRANDING
 # ============================================================
 with open(_PROJECT_ROOT / "student_config.yaml") as f:

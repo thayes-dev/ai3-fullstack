@@ -86,6 +86,26 @@ def contextualize_query(history: list[dict], user_message: str) -> str:
 # ───────────────────────────────────────────────────────
 
 
+def naive_assemble(chunks: list[dict]) -> str:
+    """Off-state control for assemble_context — bare similarity-order concat.
+
+    Used by the Session 2.2 Phoenix experiments as the "no assembly" baseline
+    so we can measure what assemble_context's grouping/sorting/gap-marking
+    actually contributes. Preserves the order retrieval returned (descending
+    similarity), separates chunks with `---`, and adds NO source headers,
+    NO chunk-index sorting, and NO gap markers.
+
+    Args:
+        chunks: List of chunk dicts (only `text` is read).
+
+    Returns:
+        Joined chunk text in retrieval order, separated by `\\n\\n---\\n\\n`.
+    """
+    if not chunks:
+        return ""
+    return "\n\n---\n\n".join(c["text"] for c in chunks)
+
+
 def assemble_context(
     chunks: list[dict], gap_marker: str = "[...content omitted...]"
 ) -> str:

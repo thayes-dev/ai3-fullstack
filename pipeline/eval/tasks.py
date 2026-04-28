@@ -5,14 +5,15 @@ A Phoenix "task" is a function that takes one dataset example (a dict) and
 returns a dict of output that evaluators will grade. Each task runs a full
 RAG pipeline end-to-end: retrieval + prompt assembly + generation.
 
-We expose two tasks — one per retrieval strategy — so Phoenix can run the
-same golden set through both and produce a side-by-side comparison in the UI.
+We expose multiple tasks so Phoenix can run the same golden set through each
+and produce a side-by-side comparison in the UI.
 
     client.experiments.run_experiment(dataset=..., task=naive_task, ...)
     client.experiments.run_experiment(dataset=..., task=hyde_task, ...)
+    client.experiments.run_experiment(dataset=..., task=rewrite_only_task, ...)
 
 Students explore by:
-    - Reading the symmetric structure (both tasks share a helper)
+    - Reading the symmetric structure (tasks share helpers)
     - Adding their own task (e.g., `enriched_task`) once they've built
       `enriched_retrieve()` in Session 1.1
     - Inspecting what `naive_task({"question": "..."})` returns locally
@@ -20,6 +21,11 @@ Students explore by:
 
 from pipeline.retrieval.naive import naive_retrieve, build_prompt
 from pipeline.generation.generate import call_claude_with_usage
+from pipeline.context.assembler import (
+    contextualize_query,
+    assemble_context,
+    naive_assemble,
+)
 
 # Note: hyde_retrieve is imported lazily inside hyde_task() because students
 # build it during Session 1.1. On a fresh clone before 1.1, this module would
@@ -30,6 +36,16 @@ from pipeline.generation.generate import call_claude_with_usage
 # for this corpus — small enough to keep context tight, large enough that
 # multi-doc queries have a chance to find all their sources.
 TOP_K = 5
+
+
+# Mirrors app/rag.py:74-77 so the Session 2.2 context-management experiments
+# measure exactly the prompt the chat app uses in production.
+_CONTEXT_SYSTEM_PROMPT = (
+    "You are a helpful assistant for Northbrook Partners employees.\n"
+    "Answer questions using ONLY the provided source documents.\n"
+    "If the sources don't contain enough information, say so.\n"
+    "If prior conversation is shown, build on it — don't repeat previous answers."
+)
 
 
 def _run_pipeline(question: str, retrieve_fn) -> dict:
@@ -67,6 +83,71 @@ def _run_pipeline(question: str, retrieve_fn) -> dict:
         "chunks": chunks,           # Evaluators inspect this for retrieval quality
         "answer": result["text"],   # Evaluators inspect this for answer quality
     }
+
+
+def _run_pipeline_with_context(
+    question: str,
+    history: list[dict],
+    use_contextualize: bool,
+    use_assemble: bool,
+) -> dict:
+    """Run the multi-turn RAG pipeline with toggleable context-management levers.
+
+    Mirrors the production prompt structure in `app/rag.py:149-168`
+    (Conversation So Far / Sources / Current Question sections) so the
+    Session 2.2 experiments measure what the live chat app actually does —
+    not the bare `build_prompt` path used by `_run_pipeline`.
+
+    Args:
+        question: The user's current question.
+        history: Prior {role, content} messages. Empty list for single-turn cases.
+        use_contextualize: If True, rewrite the query for retrieval using history.
+            Note: this is a no-op when history is empty (assembler.py:55-56).
+        use_assemble: If True, use `assemble_context` (group by source, sort by
+            chunk_index, insert gap markers). If False, use `naive_assemble`
+            (similarity-order concat with --- separators) as the off-state control.
+
+    Returns:
+        {"chunks": [...], "answer": "..."} — same shape as `_run_pipeline`.
+    """
+    # Step 1: optionally rewrite query for retrieval
+    retrieval_query = (
+        contextualize_query(history, question) if use_contextualize else question
+    )
+
+    # Step 2: retrieve
+    chunks = naive_retrieve(retrieval_query, TOP_K)
+    if not chunks:
+        return {
+            "chunks": [],
+            "answer": "I couldn't find relevant information in the Northbrook documents.",
+        }
+
+    # Step 3: assemble (full vs naive baseline)
+    assembled = assemble_context(chunks) if use_assemble else naive_assemble(chunks)
+
+    # Step 4: build prompt mirroring app/rag.py:150-168
+    sections = []
+    recent = history[-6:] if history else []
+    if recent:
+        convo = "\n\n".join(
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+            for m in recent
+        )
+        sections.append("## Conversation So Far\n" + convo)
+    sections.append("## Sources\n" + assembled)
+    # Use the original question, not the rewritten query (matches app/rag.py:163-166)
+    sections.append("## Current Question\n" + question)
+
+    user_message = "\n\n".join(sections)
+
+    result = call_claude_with_usage(
+        prompt=user_message,
+        system_prompt=_CONTEXT_SYSTEM_PROMPT,
+        temperature=0.0,
+    )
+
+    return {"chunks": chunks, "answer": result["text"]}
 
 
 def naive_task(input: dict) -> dict:
@@ -107,3 +188,140 @@ def hyde_task(input: dict) -> dict:
     question = input["question"]
     result = _run_pipeline(question, hyde_retrieve)
     return {"question": question, **result}
+
+
+# ─── SESSION 2.2 CONTEXT-MANAGEMENT EXPERIMENTS ─────────────────────────
+# Three task variants that toggle contextualize_query and assemble_context
+# independently. All three use naive_retrieve; the differences are isolated
+# to the context-management layer. See plan: .planning/... or the Session 2.2
+# notebook for the full experiment design.
+
+
+def rewrite_only_task(input: dict) -> dict:
+    """contextualize_query=ON, assemble_context=OFF (naive_assemble for chunks)."""
+    question = input["question"]
+    history = input.get("history", [])
+    result = _run_pipeline_with_context(
+        question, history, use_contextualize=True, use_assemble=False
+    )
+    return {"question": question, **result}
+
+
+def assemble_only_task(input: dict) -> dict:
+    """contextualize_query=OFF, assemble_context=ON."""
+    question = input["question"]
+    history = input.get("history", [])
+    result = _run_pipeline_with_context(
+        question, history, use_contextualize=False, use_assemble=True
+    )
+    return {"question": question, **result}
+
+
+def rewrite_and_assemble_task(input: dict) -> dict:
+    """Both levers ON — matches what app/rag.py runs in production."""
+    question = input["question"]
+    history = input.get("history", [])
+    result = _run_pipeline_with_context(
+        question, history, use_contextualize=True, use_assemble=True
+    )
+    return {"question": question, **result}
+
+
+# ---------------------------------------------------------------------------
+# Safety task — runs the full guardrail pipeline (Session 3.1)
+# ---------------------------------------------------------------------------
+# Lazy imports: pipeline/safety/guard.py is built by students during
+# Session 3.1. Before that session, this module would fail at top level.
+# Lazy import lets naive_task and hyde_task work regardless.
+
+def safety_task(input: dict) -> dict:
+    """Run adversarial input through the full guardrail pipeline.
+
+    Unlike naive_task and hyde_task which test retrieval quality, this task
+    tests DEFENSIVE quality. It runs the input through every guardrail layer:
+
+        1. validate_input  — pattern matching, length limits
+        2. retrieve        — standard RAG retrieval (if input passes)
+        3. build_hardened_prompt — boundary markers, refusal rules
+        4. call_claude     — generation with the hardened prompt
+        5. validate_output — compromise indicators, prompt leakage
+
+    The output dict is shaped differently from the correctness tasks because
+    the safety_check evaluator needs to know WHICH layer caught the attack
+    (or didn't).
+
+    Args:
+        input: A dict like {"question": "Ignore all previous instructions..."}.
+
+    Returns:
+        {
+            "question": str,        — the original attack string
+            "response": str,        — what the user would see (answer or block msg)
+            "input_blocked": bool,  — True if input validation rejected it
+            "output_blocked": bool, — True if output validation caught it
+            "block_reason": str,    — why the input/output was blocked ("" if not)
+        }
+    """
+    from pipeline.safety.guard import (  # lazy — built in Session 3.1
+        validate_input,
+        build_hardened_prompt,
+        validate_output,
+    )
+
+    question = input["question"]
+
+    # ── Layer 1: Input validation ──────────────────────────────────
+    input_ok, input_reason = validate_input(question)
+    if not input_ok:
+        return {
+            "question": question,
+            "response": input_reason,
+            "input_blocked": True,
+            "output_blocked": False,
+            "block_reason": input_reason,
+        }
+
+    # ── Layer 2: Retrieval ─────────────────────────────────────────
+    chunks = naive_retrieve(question, TOP_K)
+
+    # ── Layer 3: Hardened prompt assembly ──────────────────────────
+    # Format chunks as context for the hardened prompt template.
+    context_blocks = []
+    source_names = []
+    for chunk in chunks:
+        source_name = chunk["metadata"].get("source", "Unknown")
+        source_names.append(source_name)
+        context_blocks.append(
+            f"[Source: {source_name}, Score: {chunk['score']:.3f}]\n{chunk['text']}"
+        )
+    context_section = "\n\n---\n\n".join(context_blocks)
+
+    system_prompt = build_hardened_prompt(context_section)
+
+    # ── Layer 4: Generation ────────────────────────────────────────
+    result = call_claude_with_usage(
+        prompt=question,
+        system_prompt=system_prompt,
+        temperature=0.0,
+    )
+    response_text = result["text"]
+
+    # ── Layer 5: Output validation ─────────────────────────────────
+    output_ok, output_reason = validate_output(response_text, source_names)
+    if not output_ok:
+        return {
+            "question": question,
+            "response": output_reason,
+            "input_blocked": False,
+            "output_blocked": True,
+            "block_reason": output_reason,
+        }
+
+    # ── All layers passed ──────────────────────────────────────────
+    return {
+        "question": question,
+        "response": response_text,
+        "input_blocked": False,
+        "output_blocked": False,
+        "block_reason": "",
+    }

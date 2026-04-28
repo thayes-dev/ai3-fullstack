@@ -2,6 +2,6 @@
 # The instructor will NEVER modify this file.
 # TIP: Always wrap values in double quotes to avoid YAML parsing issues.
 
-app_name: "Northbrook Q&A"
-tagline: "Ask questions about Northbrook Partners"
-welcome_message: "Hello! Ask me anything about Northbrook Partners."
+app_name: "Northbrook Archives"
+tagline: "Spared no expense answering your questions about Northbrook Partners."
+welcome_message: "Welcome to the **Northbrook Archives**. Our records are preserved and ready for inquiry.\n\nTry asking:\n\n- What is Northbrook Partners' investment strategy?\n- Tell me about a recent Northbrook deal.\n- Who are the key portfolio companies?"

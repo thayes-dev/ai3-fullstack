@@ -28,6 +28,22 @@ from app.branding import apply_branding
 from app.rag import get_response
 
 # ============================================================
+# DEPLOYMENT TODO (Session 4.1)
+# ============================================================
+# When deploying to Streamlit Community Cloud, API keys must NOT
+# be stored in secrets — anyone with the URL could burn your credits.
+# Instead, add a sidebar input that lets each visitor enter their own key:
+#
+#   api_key = st.sidebar.text_input("Anthropic API Key", type="password")
+#   if not api_key:
+#       st.warning("Enter your Anthropic API key to start chatting.")
+#       st.stop()
+#
+# Pass the key to your pipeline (e.g., via st.session_state).
+# See DR-017 for the full pattern.
+# ============================================================
+
+# ============================================================
 # LOAD CONFIG & APPLY BRANDING
 # ============================================================
 with open(_PROJECT_ROOT / "student_config.yaml") as f:
@@ -177,3 +193,18 @@ def display_sources(sources: list[dict]):
 #          st.session_state.messages.copy()
 #      )
 # ============================================================
+if prompt := st.chat_input("Ask a question..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    response = get_response(prompt, st.session_state.messages)
+
+    with st.chat_message("assistant"):
+        st.markdown(response.answer)
+        display_sources(response.sources)
+
+    st.session_state.messages.append({"role": "assistant", "content": response.answer})
+    st.session_state.conversations[st.session_state.current_chat] = (
+        st.session_state.messages.copy()
+    )

@@ -1,0 +1,12 @@
+.venv/
+chroma_db/
+notebooks/
+.git/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.claude/
+my_work/
+tests/
+data/feedback.json

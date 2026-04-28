@@ -139,9 +139,9 @@ def answer_addresses_question(input: dict, output: dict, expected: dict) -> dict
         response=output["answer"][:2000],  # cap to control token cost
     )
 
-    # Call Claude Haiku 4.5 with the record_verdict tool forced
+    # Call Claude Sonnet 4.5 as the judge (better nuance than Haiku)
     response = _client.messages.create(
-        model="claude-haiku-4-5",
+        model="claude-sonnet-4-5",
         max_tokens=256,
         tools=[
             {

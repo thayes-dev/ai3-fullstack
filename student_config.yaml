@@ -2,6 +2,18 @@
 # The instructor will NEVER modify this file.
 # TIP: Always wrap values in double quotes to avoid YAML parsing issues.
 
-app_name: "Northbrook Q&A"
-tagline: "Ask questions about Northbrook Partners"
-welcome_message: "Hello! Ask me anything about Northbrook Partners."
+app_name: "Northbrook Intelligence"
+
+tagline: "Grounded answers from internal knowledge systems"
+
+welcome_message: |
+  **Northbrook Intelligence System**
+
+  This interface provides grounded answers based on internal Northbrook documentation.
+
+  Ask structured, specific questions for best results.
+
+  Examples:
+  * What are the company's remote work policies?
+  * Summarize the key outcomes of the Q4 board meeting
+  * What is required to set up secure VPN access?

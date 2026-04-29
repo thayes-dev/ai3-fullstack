@@ -1,73 +1,117 @@
-"""
-hyde.py -- Hypothetical Document Embeddings
+﻿"""
+hyde.py -- Hypothetical Document Embeddings (HyDE)
 
-Transform queries by generating hypothetical answers, then embed the
-hypothetical answer for retrieval instead of the raw question.
+HyDE transforms user queries by generating a *hypothetical* answer first,
+then embedding that answer for retrieval instead of the raw question.
 
-This closes the embedding gap: questions and answers live in different
-neighborhoods. By generating a hypothetical answer, we move our search
-vector into "answer space" where the real answers live.
+Why it works:
+    Questions and answers live in different embedding neighborhoods.
+    "What are Northbrook's consulting fees?" lands in question-space, but
+    the actual fee schedule chunk lives in answer-space.  A naive embed of
+    the question may never get close enough to surface the right chunk.
+
+    HyDE bridges this "embedding gap" by asking the LLM to imagine what a
+    correct answer might look like.  The hypothetical answer -- even though
+    it may contain hallucinated details -- occupies the same embedding
+    neighborhood as the real answer chunks.  We embed the hypothesis and
+    search with it, pulling back the genuine documents that live nearby.
 
 Session 1.1: We build these functions together in class.
 """
 
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from the repo root so ANTHROPIC_API_KEY is available
+# before we instantiate the client.  Without this, any import of
+# hyde.py fails with an AuthenticationError.
+_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(_ENV_PATH)
+
 import anthropic
+
 from pipeline.embeddings.embed import embed_texts
 from pipeline.ingestion.store import get_collection
 
 client = anthropic.Anthropic()
 
 
+# ─── CUSTOMIZABLE: Hypothetical answer prompt ──────────────────────
+# Change the system prompt or user prompt to improve hypothetical
+# answers for your specific use case.
+# ───────────────────────────────────────────────────────────────────
+
+
 def generate_hypothetical_answer(question: str, domain: str = "company") -> str:
-    """Generate a HyDE-style hypothetical answer for retrieval.
+    """Ask Claude to imagine what a correct answer document would say.
 
-    The hypothetical answer does not need to be factually correct. It
-    needs to sound like an excerpt from a policy document or handbook so
-    the embedding lands in answer space rather than question space.
+    The generated text does NOT need to be factually correct -- it only
+    needs to *sound like* a real document so its embedding lands in the
+    right neighborhood.
 
     Args:
-        question: The user's original question.
-        domain: Hint for what kind of document to mimic.
+        question: The user's question.
+        domain: Domain hint used in the prompt (default: "company").
 
     Returns:
-        A brief hypothetical answer passage.
+        A short hypothetical answer string (2-3 sentences).
     """
-    system_prompt = (
-        f"You are writing an excerpt from an internal {domain} policy document or handbook. "
-        "Write a brief passage (2-3 sentences) that answers the following question as if it were from such a document. "
-        "Make it sound like official, professional documentation. Do not include the question in your response."
-    )
-
-    response = client.messages.create(
+    message = client.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=200,
-        temperature=0.7,
-        system=system_prompt,
-        messages=[{"role": "user", "content": question}],
+        max_tokens=256,
+        system=(
+            f"You are a technical writer producing internal {domain} documentation. "
+            "Write as if you are quoting directly from an existing internal document. "
+            "Be specific, use professional language, and do not hedge or qualify."
+        ),
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Answer this question in 2-3 sentences as if you were "
+                    f"an internal {domain} document: {question}"
+                ),
+            }
+        ],
     )
 
-    return response.content[0].text.strip()
+    return message.content[0].text
 
 
-def hyde_retrieve(question: str, n_results: int = 5, domain: str = "company") -> list[dict]:
-    """Retrieve chunks by embedding a hypothetical answer instead of the question.
+def hyde_retrieve(question: str, top_k: int = 5, domain: str = "company") -> list[dict]:
+    """Retrieve chunks using a hypothetical answer embedding.
+
+    Steps:
+        1. Generate a hypothetical answer for the question.
+        2. Embed the *hypothetical answer* (NOT the question).
+        3. Query ChromaDB with the hypothetical embedding.
+        4. Format results with text, metadata, score, and the hypothesis.
 
     Args:
-        question: The user's original question.
-        n_results: Number of chunks to retrieve.
-        domain: Hint for the hypothetical answer generation.
+        question: The user's question.
+        top_k: Number of chunks to retrieve (default: 5).
+        domain: Domain hint passed to the hypothesis generator.
 
     Returns:
-        A list of dicts with keys: text, metadata, score, hyde_answer.
+        A list of dicts, each containing:
+            - text: The chunk content.
+            - metadata: The chunk's stored metadata.
+            - score: Cosine similarity (1 - distance), higher is better.
+            - hyde_answer: The hypothetical answer that was used for search.
     """
+    # Step 1 -- Generate a hypothetical answer
+    hyde_answer = generate_hypothetical_answer(question, domain)
+
+    # Step 2 -- Embed the hypothesis (this is the key insight of HyDE)
+    hyde_embedding = embed_texts([hyde_answer])[0]
+
+    # Step 3 -- Query ChromaDB with the hypothetical embedding
     collection = get_collection()
 
-    hypothetical_answer = generate_hypothetical_answer(question, domain=domain)
-    query_embedding = embed_texts([hypothetical_answer])[0]
-
     results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
+        query_embeddings=[hyde_embedding],
+        n_results=top_k,
         include=["documents", "metadatas", "distances"],
     )
 
@@ -75,15 +119,16 @@ def hyde_retrieve(question: str, n_results: int = 5, domain: str = "company") ->
     metadatas = results["metadatas"][0]
     distances = results["distances"][0]
 
+    # Step 4 -- Format results
     sources = [
         {
             "text": doc,
             "metadata": meta,
             "score": 1 - dist,
-            "hyde_answer": hypothetical_answer,
+            "hyde_answer": hyde_answer,
         }
         for doc, meta, dist in zip(documents, metadatas, distances)
     ]
 
-    sources.sort(key=lambda item: item["score"], reverse=True)
+    sources.sort(key=lambda s: s["score"], reverse=True)
     return sources

@@ -38,25 +38,17 @@ apply_branding(config)
 # ============================================================
 # STEP 1: Initialize Session State
 # ============================================================
-# TODO: Initialize three session state keys using the guard pattern:
-#
-#   "messages"      -> empty list []
-#                      (current conversation's message history)
-#
-#   "conversations" -> empty dict {}
-#                      (all conversations, keyed by chat_id)
-#
-#   "current_chat"  -> None
-#                      (ID of the active conversation)
-#
-# Use: if "key" not in st.session_state:
-#          st.session_state.key = value
-#
-# Then: auto-create the first conversation if current_chat is None:
-#   if st.session_state.current_chat is None:
-#       chat_id = "chat_0"
-#       st.session_state.current_chat = chat_id
-#       st.session_state.conversations[chat_id] = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "conversations" not in st.session_state:
+    st.session_state.conversations = {}
+if "current_chat" not in st.session_state:
+    st.session_state.current_chat = None
+
+if st.session_state.current_chat is None:
+    chat_id = "chat_0"
+    st.session_state.current_chat = chat_id
+    st.session_state.conversations[chat_id] = []
 # ============================================================
 
 
@@ -153,27 +145,19 @@ def display_sources(sources: list[dict]):
 # ============================================================
 # STEP 5: Chat Input Handler
 # ============================================================
-# TODO: Implement the chat input handler
-#
-# Use: if prompt := st.chat_input("Ask a question..."):
-#
-# Inside the block:
-#   a. Append the user message to st.session_state.messages
-#      Format: {"role": "user", "content": prompt}
-#   b. Display the user message with:
-#      with st.chat_message("user"):
-#          st.markdown(prompt)
-#   c. Call get_response(prompt, st.session_state.messages) to get a response
-#      response.answer = the text reply
-#      response.sources = list of source dicts (may be empty)
-#   d. Display the assistant message with:
-#      with st.chat_message("assistant"):
-#          st.markdown(response.answer)
-#          display_sources(response.sources)
-#   e. Append the assistant message to st.session_state.messages
-#      Format: {"role": "assistant", "content": response.answer}
-#   f. Save the conversation:
-#      st.session_state.conversations[st.session_state.current_chat] = (
-#          st.session_state.messages.copy()
-#      )
+if prompt := st.chat_input("Ask a question..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    response = get_response(prompt, st.session_state.messages)
+
+    with st.chat_message("assistant"):
+        st.markdown(response.answer)
+        display_sources(response.sources)
+
+    st.session_state.messages.append({"role": "assistant", "content": response.answer})
+    st.session_state.conversations[st.session_state.current_chat] = (
+        st.session_state.messages.copy()
+    )
 # ============================================================

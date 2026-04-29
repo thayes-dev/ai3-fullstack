@@ -3,8 +3,9 @@ enableStaticServing = true
 
 [theme]
 # Uncomment and edit any line below to customize your app's appearance
-# primaryColor = "#FF4B4B"
-# backgroundColor = "#FFFFFF"
-# secondaryBackgroundColor = "#F0F2F6"
-# textColor = "#262730"
-# font = "sans serif"
+base="dark"
+primaryColor="#3A7CA5"
+backgroundColor="#0F1720"
+secondaryBackgroundColor="#1A2430"
+textColor="#E6EDF3"
+font="sans serif"

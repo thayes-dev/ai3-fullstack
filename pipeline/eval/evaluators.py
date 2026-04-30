@@ -31,8 +31,8 @@ import anthropic
 from pydantic import BaseModel, Field
 
 
-# Claude client for the LLM judge. Haiku 4.5 is ~10x cheaper than Sonnet and
-# plenty accurate for PASS/FAIL classification with a clear rubric.
+# Claude client for the LLM judge. Sonnet 4.5 provides good nuance for
+# PASS/FAIL classification with a clear rubric.
 _client = anthropic.Anthropic()
 
 
@@ -104,7 +104,7 @@ AND aligns with the expected answer. Provide a brief reason."""
 def answer_addresses_question(input: dict, output: dict, expected: dict) -> dict:
     """Does the generated answer align with the expected answer?
 
-    Uses Claude Haiku 4.5 as the judge via STRUCTURED OUTPUT. The judge is
+    Uses Claude Sonnet 4.5 as the judge via STRUCTURED OUTPUT. The judge is
     handed a `record_verdict` tool whose schema is the `JudgeVerdict` Pydantic
     model — Claude can only respond by "calling" the tool with a valid verdict.
     No brittle PASS/FAIL string parsing.
@@ -125,7 +125,7 @@ def answer_addresses_question(input: dict, output: dict, expected: dict) -> dict
     Hint for students:
         1. Format JUDGE_TEMPLATE with question, expected, generated answer.
            (Cap the generated answer at 2000 chars to control token cost.)
-        2. Call Claude Haiku 4.5 with the record_verdict tool forced via
+        2. Call Claude Sonnet 4.5 with the record_verdict tool forced via
            tool_choice={"type": "tool", "name": "record_verdict"}.
            The tool's input_schema is JudgeVerdict.model_json_schema().
         3. Pull the tool_use content block from result.content, then

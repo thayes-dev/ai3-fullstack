@@ -46,7 +46,11 @@ load_dotenv(_ENV_PATH)
 # The retrieve function must accept (question: str, top_k: int)
 # and return list[dict] with keys: text, metadata, score.
 # ──────────────────────────────────────────────────────────────
-from pipeline.retrieval.naive import naive_retrieve as retrieve
+# Lab 2 customization: enriched retrieval matches user queries against
+# pre-generated questions per chunk, giving question-to-question matching
+# instead of question-to-answer (naive). Better for HR queries that map
+# cleanly to policy sections.
+from pipeline.retrieval.enriched import enriched_retrieve as retrieve
 
 from pipeline.generation.generate import call_claude
 from pipeline.context.assembler import contextualize_query, assemble_context
@@ -135,14 +139,13 @@ def get_response(question: str, messages: list[dict]) -> ChatResponse:
     rewritten = contextualize_query(managed_history, question)
 
     # ─── RETRIEVAL PARAMETERS (customization section 5 of 7) ─
-    # How many chunks to retrieve and quality thresholds.
-    # top_k: number of chunks to fetch (more = broader context,
-    #         but costs more tokens and may add noise).
-    #
-    # After retrieval, you could also filter by score threshold:
-    #   sources = [s for s in sources if s["score"] > 0.35]
-    # ──────────────────────────────────────────────────────────
-    sources = retrieve(rewritten, top_k=5)
+    # Lab 2 customization: switched to enriched retrieval (Section 1)
+    # which is question-to-question matching. Increased top_k from 5
+    # to 8 for multi-part HR questions, and added a score threshold
+    # to filter out weak matches that would add noise to context.
+    SCORE_THRESHOLD = 0.35
+    raw_sources = retrieve(rewritten, top_k=8)
+    sources = [s for s in raw_sources if s["score"] >= SCORE_THRESHOLD]
 
     if not sources:
         return ChatResponse(

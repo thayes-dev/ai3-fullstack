@@ -134,7 +134,7 @@ def enrich_and_store(
     chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
     try:
         chroma_client.delete_collection(name=collection_name)
-    except ValueError:
+    except Exception:
         pass  # Collection doesn't exist yet -- that's fine
     collection = chroma_client.get_or_create_collection(
         name=collection_name,

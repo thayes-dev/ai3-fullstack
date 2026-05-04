@@ -190,6 +190,26 @@ def hyde_task(input: dict) -> dict:
     return {"question": question, **result}
 
 
+def enriched_task(input: dict) -> dict:
+    """Run the question-enrichment RAG pipeline on one dataset example.
+
+    Uses enriched_retrieve, which matches the user's question against
+    pre-generated question embeddings stored at ingest time, then returns
+    the source chunk each matched question points to.
+
+    Args:
+        input: A dict like {"question": "What is the vacation policy?"}.
+
+    Returns:
+        {"question": ..., "chunks": [...], "answer": ...}
+    """
+    from pipeline.retrieval.enriched import enriched_retrieve
+
+    question = input["question"]
+    result = _run_pipeline(question, enriched_retrieve)
+    return {"question": question, **result}
+
+
 # ─── SESSION 2.2 CONTEXT-MANAGEMENT EXPERIMENTS ─────────────────────────
 # Three task variants that toggle contextualize_query and assemble_context
 # independently. All three use naive_retrieve; the differences are isolated

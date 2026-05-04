@@ -43,6 +43,8 @@ from phoenix.client import Client
 from pipeline.eval.golden_set import get_dataset_name
 from pipeline.eval.tasks import (
     naive_task,
+    hyde_task,
+    enriched_task,
     rewrite_only_task,
     assemble_only_task,
     rewrite_and_assemble_task,
@@ -71,18 +73,14 @@ CORRECTNESS_EVALUATORS = [
 # Each entry is (experiment_label, task_function). We run one experiment
 # per pipeline so the comparison lives natively in Phoenix.
 #
-# Session 2.2 study: isolating contextualize_query and assemble_context.
-#   - naive_baseline_v2:    re-baseline against the v2 dataset (15 rows w/ multi-turn)
-#   - rewrite_only:         contextualize_query=ON, assemble_context=OFF
-#   - assemble_only:        contextualize_query=OFF, assemble_context=ON
-#   - rewrite_and_assemble: both ON (matches what app/rag.py runs in production)
-# hyde_task is intentionally excluded — we already have hyde scores from prior
-# runs and including it would muddy the comparison.
+# Lab 2 study: comparing retrieval strategies.
+#   - naive_baseline:  pure semantic similarity (question vs chunk embeddings)
+#   - hyde:            embed a hypothetical answer, match against chunk embeddings
+#   - enriched:        match question against pre-generated question embeddings
 CORRECTNESS_PIPELINES = [
-    ("naive_baseline_v2", naive_task),
-    ("rewrite_only", rewrite_only_task),
-    ("assemble_only", assemble_only_task),
-    ("rewrite_and_assemble", rewrite_and_assemble_task),
+    ("naive_baseline", naive_task),
+    ("hyde", hyde_task),
+    ("enriched", enriched_task),
 ]
 
 

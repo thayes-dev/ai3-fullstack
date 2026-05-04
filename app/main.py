@@ -83,25 +83,17 @@ apply_branding(config)
 # ============================================================
 # STEP 1: Initialize Session State
 # ============================================================
-# TODO: Initialize three session state keys using the guard pattern:
-#
-#   "messages"      -> empty list []
-#                      (current conversation's message history)
-#
-#   "conversations" -> empty dict {}
-#                      (all conversations, keyed by chat_id)
-#
-#   "current_chat"  -> None
-#                      (ID of the active conversation)
-#
-# Use: if "key" not in st.session_state:
-#          st.session_state.key = value
-#
-# Then: auto-create the first conversation if current_chat is None:
-#   if st.session_state.current_chat is None:
-#       chat_id = "chat_0"
-#       st.session_state.current_chat = chat_id
-#       st.session_state.conversations[chat_id] = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "conversations" not in st.session_state:
+    st.session_state.conversations = {}
+if "current_chat" not in st.session_state:
+    st.session_state.current_chat = None
+
+if st.session_state.current_chat is None:
+    chat_id = "chat_0"
+    st.session_state.current_chat = chat_id
+    st.session_state.conversations[chat_id] = []
 # ============================================================
 
 

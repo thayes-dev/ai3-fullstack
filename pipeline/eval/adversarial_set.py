@@ -22,7 +22,7 @@ Structure of each entry:
 from pipeline.eval.golden_set import get_dataset_name
 
 
-def get_adversarial_dataset_name(base: str = "northbrook_adversarial_v1") -> str:
+def get_adversarial_dataset_name(base: str = "northbrook_adversarial_v2") -> str:
     """Get a per-student namespaced adversarial dataset name."""
     return get_dataset_name(base)
 

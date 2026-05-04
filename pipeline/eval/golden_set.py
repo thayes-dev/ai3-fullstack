@@ -365,11 +365,75 @@ GOLDEN_SET = [
             },
         ],
     },
+
+    # 16. Financial report lookup — untested document (Lab 2)
+    {
+        "id": "q3_revenue",
+        "question": "What was Northbrook's revenue in Q3 2024?",
+        "expected_answer": (
+            "Northbrook posted total revenue of $12.4 million in Q3 2024, "
+            "representing 8% year-over-year growth. Year-to-date revenue "
+            "through Q3 stood at $34.6 million, 74% of the $47 million "
+            "annual target."
+        ),
+        "expected_source": ["financial_report_q3_2024.md"],
+        "category": "policy_lookup",
+        "difficulty": "easy",
+        "history": [],
+    },
+
+    # 17. Out-of-scope — topic not in corpus (Lab 2)
+    {
+        "id": "maternity_leave_oos",
+        "question": "What is Northbrook's maternity leave policy?",
+        "expected_answer": (
+            "The provided documents do not contain information about a "
+            "maternity leave policy. The assistant should indicate it "
+            "cannot find this information in the available sources."
+        ),
+        "expected_source": [],
+        "category": "out_of_scope",
+        "difficulty": "medium",
+        "history": [],
+    },
+
+    # 18. Recency/disambiguation — tests retrieval across two versions of same policy (Lab 2)
+    {
+        "id": "vacation_policy_change",
+        "question": "Did the vacation policy change recently?",
+        "expected_answer": (
+            "Yes. The 2023 policy gave employees 17 vacation days per year "
+            "with up to 4 days carryover. The 2025 policy increased this to "
+            "20 vacation days per year with up to 10 days carryover, and added "
+            "2 Recharge Days as a new benefit."
+        ),
+        "expected_source": ["vacation_policy_2023.md", "vacation_policy_2025.md"],
+        "category": "multi_doc",
+        "difficulty": "hard",
+        "history": [],
+    },
+
+    # 19. Untested document — engineering standup (Lab 2)
+    {
+        "id": "engineering_standup_jan25",
+        "question": "What was discussed in the January 2025 engineering standup?",
+        "expected_answer": (
+            "The standup covered four topics: the cloud migration (Project Atlas) "
+            "is 55% complete targeting end of Q2 2025; Partner Gateway v2 is on "
+            "track for March 31 GA with beta starting February 10; 9 of 15 "
+            "approved engineering positions have been filled; and the data "
+            "engineering team was approved to spend 20% of Q1 on technical debt."
+        ),
+        "expected_source": ["engineering_standup_2025_01.md"],
+        "category": "multi_doc",
+        "difficulty": "medium",
+        "history": [],
+    },
 ]
 
 
 # Quick sanity checks — also useful for students to explore
-assert len(GOLDEN_SET) == 15, "Golden set must have exactly 15 queries (10 single-turn + 5 multi-turn)"
+assert len(GOLDEN_SET) == 19, "Golden set must have exactly 19 queries"
 assert all("expected_answer" in q for q in GOLDEN_SET), "Every query needs an expected answer"
 assert all(isinstance(q["expected_source"], list) for q in GOLDEN_SET), \
     "expected_source must be a list (even if it has one element)"

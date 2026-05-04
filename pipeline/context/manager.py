@@ -3,28 +3,22 @@ Context Window Manager
 
 Session 2.2: Manage conversation history within context window budget.
 
-Chat history grows with every exchange. Without management, it will
-eventually exceed the model's context window — or waste tokens on
-irrelevant early turns. This module provides a simple sliding-window
-strategy that keeps the most recent messages.
+Three-tier strategy tuned for logistics field use (e.g., truckers who
+can run very long sessions):
 
-Three strategies worth knowing (Lab 2 candidates):
+  Tier 1 — Normal (< 12 messages):
+    Keep everything. No trimming needed.
 
-  1. **Keep last N** (implemented here)
-     - Drop oldest messages, keep the most recent.
-     - Simple, predictable, zero API calls.
-     - Tradeoff: loses early context entirely.
+  Tier 2 — Standard trim (12–99 messages):
+    Keep first 2 messages (opening context) + summarize the middle
+    into a single "Summary" assistant message + keep last 6 messages.
+    Costs one extra Claude call but retains semantic continuity.
 
-  2. **Keep first + last**
-     - Preserve the first 2 messages (system framing / opening question)
-       plus the last N. Everything in the middle is dropped.
-     - Tradeoff: still loses middle context; slightly more complex.
-
-  3. **Summarize**
-     - When history exceeds the budget, call the LLM to compress older
-       messages into a summary message, then prepend it.
-     - Tradeoff: adds latency and cost per summarization call, but
-       retains the *meaning* of the full conversation.
+  Tier 3 — Aggressive (100+ messages):
+    Skip summarization entirely to avoid runaway API spend.
+    Keep first 2 + last 4, inject a hard warning directing the user
+    to start a new chat. Appropriate when a session has clearly gone
+    beyond normal business use.
 
 Usage:
     from pipeline.context.manager import manage_history
@@ -32,45 +26,81 @@ Usage:
     trimmed = manage_history(messages, max_messages=10)
 """
 
+import os
+import anthropic
+
+
+_WARNING_MESSAGE = (
+    "⚠️ This conversation has exceeded the maximum session length for cost efficiency. "
+    "Please start a new chat to continue. For business questions, keep sessions focused on one topic."
+)
+
+_SUMMARY_PROMPT = """You are summarizing a logistics support conversation to save context space.
+Write a concise 3–5 sentence summary of the key topics discussed, decisions made, and any
+open questions. Focus on information a logistics assistant would need to answer follow-up questions.
+Begin directly with 'Summary:' — no preamble."""
+
+
+def _summarize_middle(middle_messages: list[dict]) -> str:
+    """Call Claude to compress middle messages into a summary string."""
+    conversation_text = "\n".join(
+        f"{m['role'].capitalize()}: {m['content']}" for m in middle_messages
+    )
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=256,
+        messages=[
+            {
+                "role": "user",
+                "content": f"{_SUMMARY_PROMPT}\n\n{conversation_text}",
+            }
+        ],
+    )
+    return response.content[0].text.strip()
+
 
 def manage_history(messages: list[dict], max_messages: int = 10) -> list[dict]:
-    """Truncate conversation history to fit within context budget.
+    """Manage conversation history with a three-tier strategy.
 
-    Keeps the most recent messages. Old messages are dropped entirely.
-    max_messages is rounded down to the nearest even number so we never
-    split a user/assistant pair mid-exchange.
+    Tier 1 (< 12 msgs):  return as-is.
+    Tier 2 (12–99 msgs): first 2 + LLM summary of middle + last 6.
+    Tier 3 (100+ msgs):  first 2 + warning + last 4, no summarization.
 
     Args:
         messages: Full conversation history (list of role/content dicts).
-        max_messages: Maximum number of messages to keep (default: 10,
-                      which is 5 complete exchanges).
+        max_messages: Kept for API compatibility; tiers use fixed bounds.
 
     Returns:
-        Truncated message list (last max_messages messages).
-
-    Notes:
-        - Always keep the most recent messages
-        - Does NOT include the current user question (that is added after)
-        - In production, consider summarization for long conversations
+        Managed message list ready for the RAG pipeline.
     """
-    # Guard: empty or None → empty list
     if not messages:
         return []
 
-    # ─── CUSTOMIZABLE: History management strategy ─────────
-    # Default: simple sliding window (keep last N messages).
-    # Alternatives you could implement for Lab 2:
-    #   - Keep first 2 + last N (preserves conversation opening)
-    #   - Summarize old messages with an LLM call
-    #   - Token-based budget instead of message count
-    # ───────────────────────────────────────────────────────
+    n = len(messages)
 
-    # Round down to even so we don't split a user/assistant pair
-    max_messages = max_messages - (max_messages % 2)
-
-    # If history fits within budget, return as-is
-    if len(messages) <= max_messages:
+    # ── Tier 1: normal session ────────────────────────────────
+    if n < 12:
         return messages
 
-    # Sliding window: keep the last max_messages entries
-    return messages[-max_messages:]
+    # ── Tier 3: excessive session — hard cutoff ───────────────
+    if n >= 100:
+        warning_msg = {"role": "assistant", "content": _WARNING_MESSAGE}
+        return list(messages[:2]) + [warning_msg] + list(messages[-4:])
+
+    # ── Tier 2: standard trim with summarization ──────────────
+    # Keep first 2 and last 6; summarize everything in between.
+    first = list(messages[:2])
+    last = list(messages[-6:])
+    middle = list(messages[2:-6])
+
+    if middle:
+        try:
+            summary_text = _summarize_middle(middle)
+        except Exception:
+            # Summarization failed — fall back to dropping the middle silently
+            summary_text = "Summary: Earlier conversation context was condensed to save space."
+        summary_msg = {"role": "assistant", "content": summary_text}
+        return first + [summary_msg] + last
+
+    return first + last

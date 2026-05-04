@@ -46,7 +46,7 @@ load_dotenv(_ENV_PATH)
 # The retrieve function must accept (question: str, top_k: int)
 # and return list[dict] with keys: text, metadata, score.
 # ──────────────────────────────────────────────────────────────
-from pipeline.retrieval.naive import naive_retrieve as retrieve
+from pipeline.retrieval.hyde import hyde_retrieve as retrieve
 
 from pipeline.generation.generate import call_claude
 from pipeline.context.assembler import contextualize_query, assemble_context
@@ -153,8 +153,8 @@ def get_response(question: str, messages: list[dict]) -> ChatResponse:
         with _tracer.start_as_current_span("retrieve_chunks") as ret_span:
             ret_span.set_attribute("openinference.span.kind", "RETRIEVER")
             ret_span.set_attribute("input.value", rewritten)
-            sources = retrieve(rewritten, top_k=5)
-            ret_span.set_attribute("retrieve.top_k", 5)
+            sources = retrieve(rewritten, top_k=7)
+            ret_span.set_attribute("retrieve.top_k", 7)
             ret_span.set_attribute("retrieve.n_results", len(sources))
             if sources:
                 ret_span.set_attribute("retrieve.sources",

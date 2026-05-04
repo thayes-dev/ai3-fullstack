@@ -44,6 +44,10 @@ from pipeline.retrieval.naive import naive_retrieve as retrieve
 from pipeline.generation.generate import call_claude
 from pipeline.context.assembler import contextualize_query, assemble_context
 from pipeline.context.manager import manage_history
+from opentelemetry import trace
+from opentelemetry.trace import StatusCode
+
+_tracer = trace.get_tracer("rag-pipeline")
 
 
 @dataclass
@@ -62,6 +66,7 @@ class ChatResponse:
     answer: str
     sources: list[dict] = field(default_factory=list)
     rewritten_query: str = ""
+    span_id: str = ""
 
 
 # ─── SYSTEM PROMPT ─────────────────────────────────────────────
@@ -97,85 +102,106 @@ def get_response(question: str, messages: list[dict]) -> ChatResponse:
         the rewritten query used for retrieval.
     """
 
-    # ─── HISTORY MANAGEMENT ────────────────────────────────────
-    # Trim conversation history to fit within context budget.
-    # Default: keep the last 10 messages (5 exchanges).
-    #
-    # Alternatives to explore:
-    #   - Keep first + last messages (preserve opening context)
-    #   - Summarize old messages instead of dropping them
-    #   - Adjust max_messages based on message length
-    # ──────────────────────────────────────────────────────────
-    managed_history = manage_history(messages, max_messages=10)
+    with _tracer.start_as_current_span(
+        "rag_pipeline",
+        attributes={"input.value": question, "openinference.span.kind": "CHAIN"},
+    ) as pipeline_span:
+        ctx     = pipeline_span.get_span_context()
+        span_id = format(ctx.span_id, '016x') if ctx.span_id else ""
 
-    # ─── QUERY REWRITING ──────────────────────────────────────
-    # Rewrite follow-up questions so they stand alone for retrieval.
-    # e.g., "How many days?" after discussing PTO becomes
-    #        "How many PTO days does a Northbrook employee receive?"
-    #
-    # The rewriting prompt lives in pipeline/context/assembler.py.
-    # Customize it there to change rewriting behavior.
-    # ──────────────────────────────────────────────────────────
-    rewritten = contextualize_query(managed_history, question)
+        # ─── HISTORY MANAGEMENT ────────────────────────────────────
+        # Trim conversation history to fit within context budget.
+        # Default: keep the last 10 messages (5 exchanges).
+        #
+        # Alternatives to explore:
+        #   - Keep first + last messages (preserve opening context)
+        #   - Summarize old messages instead of dropping them
+        #   - Adjust max_messages based on message length
+        # ──────────────────────────────────────────────────────────
+        managed_history = manage_history(messages, max_messages=10)
 
-    # ─── RETRIEVAL PARAMETERS ─────────────────────────────────
-    # How many chunks to retrieve and quality thresholds.
-    # top_k: number of chunks to fetch (more = broader context,
-    #         but costs more tokens and may add noise).
-    #
-    # After retrieval, you could also filter by score threshold:
-    #   sources = [s for s in sources if s["score"] > 0.35]
-    # ──────────────────────────────────────────────────────────
-    sources = retrieve(rewritten, top_k=5)
+        # ─── QUERY REWRITING ──────────────────────────────────────
+        # Rewrite follow-up questions so they stand alone for retrieval.
+        # e.g., "How many days?" after discussing PTO becomes
+        #        "How many PTO days does a Northbrook employee receive?"
+        #
+        # The rewriting prompt lives in pipeline/context/assembler.py.
+        # Customize it there to change rewriting behavior.
+        # ──────────────────────────────────────────────────────────
+        rewritten = contextualize_query(managed_history, question)
 
-    # Handle empty retrieval
-    if not sources:
-        return ChatResponse(
-            answer="I couldn't find relevant information in the Northbrook documents.",
-            sources=[],
-            rewritten_query=rewritten,
-        )
+        # ─── RETRIEVAL PARAMETERS ─────────────────────────────────
+        # How many chunks to retrieve and quality thresholds.
+        # top_k: number of chunks to fetch (more = broader context,
+        #         but costs more tokens and may add noise).
+        #
+        # After retrieval, you could also filter by score threshold:
+        #   sources = [s for s in sources if s["score"] > 0.35]
+        # ──────────────────────────────────────────────────────────
+        with _tracer.start_as_current_span("retrieve_chunks") as ret_span:
+            ret_span.set_attribute("openinference.span.kind", "RETRIEVER")
+            ret_span.set_attribute("input.value", rewritten)
+            sources = retrieve(rewritten, top_k=5)
+            ret_span.set_attribute("retrieve.top_k", 5)
+            ret_span.set_attribute("retrieve.n_results", len(sources))
+            if sources:
+                ret_span.set_attribute("retrieve.sources",
+                    ", ".join(s.get("metadata", {}).get("source", "") for s in sources))
+                ret_span.set_attribute("retrieve.top_score", float(sources[0].get("score", 0)))
+            ret_span.set_status(StatusCode.OK)
 
-    # ─── CONTEXT ASSEMBLY ─────────────────────────────────────
-    # Organize retrieved chunks into coherent reading order.
-    # Groups by source document, sorts by chunk index, inserts
-    # gap markers between non-consecutive chunks.
-    #
-    # The assembly logic lives in pipeline/context/assembler.py.
-    # Customize it there to change grouping, ordering, or format.
-    # ──────────────────────────────────────────────────────────
-    assembled = assemble_context(sources)
+        if not sources:
+            return ChatResponse(
+                answer="I couldn't find relevant information in the Northbrook documents.",
+                sources=[],
+                rewritten_query=rewritten,
+                span_id=span_id,
+            )
 
-    # Build the prompt with conversation context
-    sections = []
+        # ─── CONTEXT ASSEMBLY ─────────────────────────────────────
+        # Organize retrieved chunks into coherent reading order.
+        # Groups by source document, sorts by chunk index, inserts
+        # gap markers between non-consecutive chunks.
+        #
+        # The assembly logic lives in pipeline/context/assembler.py.
+        # Customize it there to change grouping, ordering, or format.
+        # ──────────────────────────────────────────────────────────
+        assembled = assemble_context(sources)
 
-    # Include recent conversation for continuity (last 3 exchanges = 6 messages)
-    recent = managed_history[-6:] if managed_history else []
-    if recent:
-        conversation_lines = []
-        for msg in recent:
-            role_label = "User" if msg["role"] == "user" else "Assistant"
-            conversation_lines.append(f"{role_label}: {msg['content']}")
-        sections.append("## Conversation So Far\n" + "\n\n".join(conversation_lines))
+        # Build the prompt with conversation context
+        sections = []
 
-    sections.append("## Sources\n" + assembled)
+        # Include recent conversation for continuity (last 3 exchanges = 6 messages)
+        recent = managed_history[-6:] if managed_history else []
+        if recent:
+            conversation_lines = []
+            for msg in recent:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                conversation_lines.append(f"{role_label}: {msg['content']}")
+            sections.append("## Conversation So Far\n" + "\n\n".join(conversation_lines))
 
-    # Use the original question, NOT the rewritten query.
-    # The rewritten query was for retrieval only. Claude should
-    # answer what the user actually asked.
-    sections.append("## Current Question\n" + question)
+        sections.append("## Sources\n" + assembled)
 
-    user_message = "\n\n".join(sections)
+        # Use the original question, NOT the rewritten query.
+        sections.append("## Current Question\n" + question)
 
-    # ─── GENERATION SETTINGS ──────────────────────────────────
-    # Model, temperature, and token limits for Claude.
-    # temperature=0.0 gives deterministic, grounded answers.
-    #
-    # Options to explore:
-    #   - temperature=0.3 for slightly more varied responses
-    #   - max_tokens=2048 for longer answers
-    #   - model="claude-haiku-4-5" for faster/cheaper responses
-    # ──────────────────────────────────────────────────────────
-    answer = call_claude(user_message, system_prompt=_SYSTEM_PROMPT, temperature=0.0)
+        user_message = "\n\n".join(sections)
 
-    return ChatResponse(answer=answer, sources=sources, rewritten_query=rewritten)
+        # ─── GENERATION SETTINGS ──────────────────────────────────
+        # Model, temperature, and token limits for Claude.
+        # temperature=0.0 gives deterministic, grounded answers.
+        #
+        # Options to explore:
+        #   - temperature=0.3 for slightly more varied responses
+        #   - max_tokens=2048 for longer answers
+        #   - model="claude-haiku-4-5" for faster/cheaper responses
+        # ──────────────────────────────────────────────────────────
+        with _tracer.start_as_current_span("generate_answer") as gen_span:
+            gen_span.set_attribute("openinference.span.kind", "LLM")
+            gen_span.set_attribute("input.value", user_message)
+            answer = call_claude(user_message, system_prompt=_SYSTEM_PROMPT, temperature=0.0)
+            gen_span.set_attribute("output.value", answer[:500])
+            gen_span.set_status(StatusCode.OK)
+
+        return ChatResponse(answer=answer, sources=sources,
+                            rewritten_query=rewritten, span_id=span_id)

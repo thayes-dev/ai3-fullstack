@@ -23,6 +23,7 @@ dependencies = [
     "scikit-learn>=1.5.0",
     "mermaid-magic>=0.1.0",
     "protobuf>=6.33.6",
+    "ipykernel>=7.2.0",
 ]
 
 [project.optional-dependencies]

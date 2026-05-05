@@ -1,5 +1,5 @@
 """
-golden_set.py -- The curated 10-query test set for AI-3 Session 1.2 evaluation.
+golden_set.py -- The curated test set for AI-3 Session 1.2 evaluation.
 
 This set was validated against the Northbrook corpus during the Session 1.1
 enrichment correctness fix (see decisions/012-enrichment-correctness-fix.md).
@@ -14,6 +14,11 @@ Structure of each entry:
                         (multi-doc queries may list several)
     category         -- policy_lookup | multi_doc | compound | procedural | out_of_scope
     difficulty       -- easy | medium | hard
+    history          -- list[dict] of prior {role, content} messages.
+                        Empty [] for single-turn cases. For multi-turn cases,
+                        the followup `question` should be UNANSWERABLE without
+                        this prior history — that is what makes contextualize_query
+                        a measurable lever.
 
 The `expected_answer` strings are short and declarative — they mirror how the
 source documents write the information. An LLM judge compares the generated
@@ -60,6 +65,7 @@ GOLDEN_SET = [
         "expected_source": ["vacation_policy_2025.md"],
         "category": "policy_lookup",
         "difficulty": "easy",
+        "history": [],
     },
 
     # 2. Single-topic lookup in expense_policy.md (HyDE winner in 1.1)
@@ -75,6 +81,7 @@ GOLDEN_SET = [
         "expected_source": ["expense_policy.md"],
         "category": "policy_lookup",
         "difficulty": "easy",
+        "history": [],
     },
 
     # 3. Enumeration from single policy doc (HyDE winner in 1.1)
@@ -89,6 +96,7 @@ GOLDEN_SET = [
         "expected_source": ["vacation_policy_2025.md"],
         "category": "policy_lookup",
         "difficulty": "easy",
+        "history": [],
     },
 
     # 4. Multi-topic single doc (enrichment winner: Q4 board meeting)
@@ -104,6 +112,7 @@ GOLDEN_SET = [
         "expected_source": ["board_meeting_q4_2024.md"],
         "category": "multi_doc",
         "difficulty": "medium",
+        "history": [],
     },
 
     # 5. Cross-document synthesis (enrichment winner: office move across 3 docs)
@@ -123,6 +132,7 @@ GOLDEN_SET = [
         ],
         "category": "multi_doc",
         "difficulty": "medium",
+        "history": [],
     },
 
     # 6. Multi-part / compound question (enrichment winner: timeline + prep)
@@ -139,6 +149,7 @@ GOLDEN_SET = [
         "expected_source": ["memo_office_relocation.md"],
         "category": "compound",
         "difficulty": "medium",
+        "history": [],
     },
 
     # 7. Two-part compound across docs (enrichment winner: CEO + priorities)
@@ -153,6 +164,7 @@ GOLDEN_SET = [
         "expected_source": ["memo_ceo_annual_kickoff.md"],
         "category": "compound",
         "difficulty": "medium",
+        "history": [],
     },
 
     # 8. Procedural / how-to (enrichment winner)
@@ -169,6 +181,7 @@ GOLDEN_SET = [
         "expected_source": ["memo_security_update.md"],
         "category": "procedural",
         "difficulty": "easy",
+        "history": [],
     },
 
     # 9. Policy lookup (enrichment winner: performance review)
@@ -185,6 +198,7 @@ GOLDEN_SET = [
         "expected_source": ["employee_handbook.md"],
         "category": "policy_lookup",
         "difficulty": "medium",
+        "history": [],
     },
 
     # 10. Policy lookup (enrichment winner: remote work)
@@ -201,9 +215,158 @@ GOLDEN_SET = [
         "expected_source": ["remote_work_policy.md"],
         "category": "policy_lookup",
         "difficulty": "easy",
+        "history": [],
     },
 
-    # 11. Follow-up pronoun resolution (tests query rewriting under RRF)
+    # ─── MULTI-TURN CASES (Session 2.2 — context-management evaluation) ───
+    # These five entries test contextualize_query. Each `question` is a
+    # follow-up that is UNANSWERABLE on its own — retrieval against the raw
+    # question would miss the right document. The synthetic assistant turn
+    # in each `history` is plausible-but-not-perfect (mimics a real chat
+    # state, not a textbook answer).
+
+    # 11. Pronoun reference — "days" only resolves with vacation context
+    {
+        "id": "vacation_days_followup",
+        "question": "How many days do I get?",
+        "expected_answer": (
+            "Eligible full-time employees receive 20 vacation days per calendar "
+            "year, with up to 10 days allowed to carry over."
+        ),
+        "expected_source": ["vacation_policy_2025.md"],
+        "category": "multi_turn",
+        "difficulty": "medium",
+        "history": [
+            {
+                "role": "user",
+                "content": "Can you tell me about Northbrook's vacation policy?",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "Northbrook offers paid vacation to eligible full-time "
+                    "employees. Requests need advance notice and are subject to "
+                    "manager approval."
+                ),
+            },
+        ],
+    },
+
+    # 12. Topic narrowing — "travel" is the qualifier; expense doc is the source
+    {
+        "id": "expense_travel_narrowing",
+        "question": "What about for travel specifically?",
+        "expected_answer": (
+            "For business travel, meals are capped at $65 per person per day. "
+            "Travel expenses must be submitted within 30 days with itemized "
+            "receipts and processed through the standard reimbursement workflow."
+        ),
+        "expected_source": ["expense_policy.md"],
+        "category": "multi_turn",
+        "difficulty": "medium",
+        "history": [
+            {
+                "role": "user",
+                "content": "What are the rules for getting expenses reimbursed?",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "All expenses need to be business-related and submitted with "
+                    "receipts within a set window. There are per-meal caps that "
+                    "vary by context."
+                ),
+            },
+        ],
+    },
+
+    # 13. Implicit subject switch — "the same thing" = VPN install
+    {
+        "id": "vpn_mac_implicit",
+        "question": "And how do I do the same thing on my Mac?",
+        "expected_answer": (
+            "On a Mac, install the Cloudflare Zero Trust client manually from "
+            "the IT self-service portal. Personal/non-managed devices follow "
+            "the manual install instructions on IT's support page; company-"
+            "managed laptops get the client deployed automatically."
+        ),
+        "expected_source": ["memo_security_update.md"],
+        "category": "multi_turn",
+        "difficulty": "medium",
+        "history": [
+            {
+                "role": "user",
+                "content": "How do I get VPN set up on my work laptop?",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "Northbrook moved to Cloudflare Zero Trust for VPN. Most "
+                    "company laptops have the client pushed automatically — "
+                    "check your apps folder before installing manually."
+                ),
+            },
+        ],
+    },
+
+    # 14. Cross-doc pivot — "that" = office move; question forces pivot to parking
+    {
+        "id": "relocation_parking_pivot",
+        "question": "Does that affect my parking benefit?",
+        "expected_answer": (
+            "The new 250 Innovation Drive office includes 180 parking spaces, "
+            "expanding capacity over the current location. Existing parking "
+            "benefits carry over with the move; specific assignment details "
+            "are coordinated through the relocation FAQ."
+        ),
+        "expected_source": ["memo_office_relocation.md"],
+        "category": "multi_turn",
+        "difficulty": "hard",
+        "history": [
+            {
+                "role": "user",
+                "content": "What's happening with the office relocation in March?",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "Northbrook is moving to 250 Innovation Drive in March 2025. "
+                    "The new space is larger and includes updated amenities."
+                ),
+            },
+        ],
+    },
+
+    # 15. Demonstrative clarification — "that" = self-assessment
+    {
+        "id": "review_deadline_clarify",
+        "question": "What's the deadline for the self-assessment?",
+        "expected_answer": (
+            "Self-assessments are part of the mid-year and year-end review "
+            "cycles. Employees submit their self-assessment ahead of the "
+            "scheduled review meeting with their manager, with year-end "
+            "self-assessments feeding into the December compensation cycle."
+        ),
+        "expected_source": ["employee_handbook.md"],
+        "category": "multi_turn",
+        "difficulty": "hard",
+        "history": [
+            {
+                "role": "user",
+                "content": "How do performance reviews work here?",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "Northbrook runs quarterly reviews with your direct manager. "
+                    "Mid-year and year-end cycles also include a self-assessment "
+                    "and peer feedback component."
+                ),
+            },
+        ],
+    },
+
+    # 16. Follow-up pronoun resolution (tests query rewriting under RRF)
     {
         "id": "sick_days_followup",
         "question": "Are those sick days unlimited or capped?",
@@ -214,9 +377,10 @@ GOLDEN_SET = [
         "expected_source": ["vacation_policy_2025.md"],
         "category": "policy_lookup",
         "difficulty": "hard",
+        "history": [],
     },
 
-    # 12. Out-of-scope refusal (tests hardened system prompt)
+    # 17. Out-of-scope refusal (tests hardened system prompt)
     {
         "id": "stock_price",
         "question": "What is Northbrook's current stock price?",
@@ -226,9 +390,10 @@ GOLDEN_SET = [
         "expected_source": [],
         "category": "out_of_scope",
         "difficulty": "easy",
+        "history": [],
     },
 
-    # 13. Cross-doc compound (tests RRF multi-doc recall)
+    # 18. Cross-doc compound (tests RRF multi-doc recall)
     {
         "id": "project_meridian",
         "question": "What is Project Meridian and how much has been budgeted for it?",
@@ -240,12 +405,15 @@ GOLDEN_SET = [
         "expected_source": ["board_meeting_q4_2024.md", "memo_ceo_annual_kickoff.md"],
         "category": "compound",
         "difficulty": "medium",
+        "history": [],
     },
 ]
 
 
-# Quick sanity checks -- also useful for students to explore
-assert len(GOLDEN_SET) == 13, "Golden set must have exactly 13 queries"
+# Quick sanity checks — also useful for students to explore
+assert len(GOLDEN_SET) == 18, "Golden set must have exactly 18 queries (15 base + 3 Lab 2 additions)"
 assert all("expected_answer" in q for q in GOLDEN_SET), "Every query needs an expected answer"
 assert all(isinstance(q["expected_source"], list) for q in GOLDEN_SET), \
     "expected_source must be a list (even if it has one element)"
+assert all("history" in q and isinstance(q["history"], list) for q in GOLDEN_SET), \
+    "Every query needs a history field (list, possibly empty)"

@@ -1,3 +1,12 @@
+# pysqlite3 swap — required for Streamlit Community Cloud (Linux ships old sqlite3)
+# Must run before any chromadb import. Harmless no-op on macOS/Windows.
+try:
+    import pysqlite3
+    import sys
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
+
 """
 store.py -- ChromaDB storage, ingestion, and verification.
 

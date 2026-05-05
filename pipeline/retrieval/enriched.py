@@ -31,22 +31,21 @@ Re-seeding the enriched collection (~3-5 min for the full corpus,
     "
 """
 
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-# Load .env from the repo root so API keys are always available,
-# regardless of which directory the script is invoked from.
-_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
-load_dotenv(_ENV_PATH)
-
 import anthropic
 import chromadb
 
 from pipeline.embeddings.embed import embed_texts
 from pipeline.ingestion.store import get_collection, CHROMA_PATH
 
-client = anthropic.Anthropic()
+
+def _get_client():
+    """Lazy Anthropic client — instantiated on first call, after env keys are set.
+
+    Module-level `client = anthropic.Anthropic()` would crash on Streamlit
+    Community Cloud, where ANTHROPIC_API_KEY isn't in the environment until
+    the sidebar runs (Session 4.1, Patch 4).
+    """
+    return anthropic.Anthropic()
 
 ENRICHED_COLLECTION = "northbrook_enriched"
 
@@ -82,6 +81,7 @@ def generate_questions_for_chunk(
     # employee would ask" vs "ask questions a compliance auditor would
     # ask") to bias retrieval toward their target audience.
     # ------------------------------------------------------------------
+    client = _get_client()
     message = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=256,

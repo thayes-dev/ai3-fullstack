@@ -53,6 +53,11 @@ from pipeline.context.assembler import contextualize_query, assemble_context
 from pipeline.context.manager import manage_history
 from pipeline.safety.guard import validate_input, build_hardened_prompt, validate_output
 from opentelemetry import trace
+from opentelemetry.trace import StatusCode
+
+# Tracer for the RAG pipeline — creates parent spans that child
+# spans (Claude calls, etc.) nest under automatically.
+_tracer = trace.get_tracer("rag-pipeline")
 
 
 @dataclass
@@ -98,109 +103,97 @@ def get_response(question: str, messages: list[dict]) -> ChatResponse:
         the rewritten query used for retrieval, and span_id.
     """
 
-    # Capture span for Phoenix feedback annotations
-    span = trace.get_current_span()
-    ctx = span.get_span_context()
-    span_id = format(ctx.span_id, '016x') if ctx.span_id else ""
+    # Create a parent span for the entire pipeline. All child spans
+    # (Claude API calls, etc.) automatically nest under this span.
+    # This is what appears as the top-level trace in Phoenix.
+    with _tracer.start_as_current_span(
+        "rag_pipeline",
+        attributes={"input.value": question, "openinference.span.kind": "CHAIN"},
+    ) as pipeline_span:
+        # Capture this span's ID for feedback annotations
+        ctx = pipeline_span.get_span_context()
+        span_id = format(ctx.span_id, '016x') if ctx.span_id else ""
 
-    # --- INPUT VALIDATION (defense layer 1) ---
-    input_ok, input_reason = validate_input(question)
-    if not input_ok:
-        return ChatResponse(
-            answer=input_reason,
-            sources=[],
-            rewritten_query="",
-            span_id=span_id,
-        )
+        # --- INPUT VALIDATION (defense layer 1) ---
+        input_ok, input_reason = validate_input(question)
+        if not input_ok:
+            pipeline_span.set_attribute("output.value", input_reason)
+            return ChatResponse(
+                answer=input_reason,
+                sources=[],
+                rewritten_query="",
+                span_id=span_id,
+            )
 
-    # ─── HISTORY MANAGEMENT (customization section 3 of 7) ────
-    # Trim conversation history to fit within context budget.
-    # Default: keep the last 10 messages (5 exchanges).
-    #
-    # Alternatives to explore:
-    #   - Keep first + last messages (preserve opening context)
-    #   - Summarize old messages instead of dropping them
-    #   - Adjust max_messages based on message length
-    # ──────────────────────────────────────────────────────────
-    managed_history = manage_history(messages, max_messages=10)
+        # ─── HISTORY MANAGEMENT (customization section 3 of 7) ────
+        managed_history = manage_history(messages, max_messages=10)
 
-    # ─── QUERY REWRITING (customization section 4 of 7) ──────
-    # Rewrite follow-up questions so they stand alone for retrieval.
-    # e.g., "How many days?" after discussing PTO becomes
-    #        "How many PTO days does a Northbrook employee receive?"
-    #
-    # The rewriting prompt lives in pipeline/context/assembler.py.
-    # Customize it there to change rewriting behavior.
-    # ──────────────────────────────────────────────────────────
-    rewritten = contextualize_query(managed_history, question)
+        # ─── QUERY REWRITING (customization section 4 of 7) ──────
+        rewritten = contextualize_query(managed_history, question)
 
-    # ─── RETRIEVAL PARAMETERS (customization section 5 of 7) ─
-    # How many chunks to retrieve and quality thresholds.
-    # top_k: number of chunks to fetch (more = broader context,
-    #         but costs more tokens and may add noise).
-    #
-    # After retrieval, you could also filter by score threshold:
-    #   sources = [s for s in sources if s["score"] > 0.35]
-    # ──────────────────────────────────────────────────────────
-    sources = retrieve(rewritten, top_k=5)
+        # ─── RETRIEVAL PARAMETERS (customization section 5 of 7) ─
+        with _tracer.start_as_current_span("retrieve_chunks") as ret_span:
+            ret_span.set_attribute("openinference.span.kind", "RETRIEVER")
+            ret_span.set_attribute("input.value", rewritten)
+            sources = retrieve(rewritten, top_k=5)
+            ret_span.set_attribute("retrieve.top_k", 5)
+            ret_span.set_attribute("retrieve.n_results", len(sources))
+            if sources:
+                ret_span.set_attribute(
+                    "retrieve.sources",
+                    ", ".join(s.get("metadata", {}).get("source", "") for s in sources),
+                )
+                ret_span.set_attribute("retrieve.top_score", float(sources[0].get("score", 0)))
+            ret_span.set_status(StatusCode.OK)
 
-    if not sources:
-        return ChatResponse(
-            answer="I couldn't find relevant information in the Northbrook documents.",
-            sources=[],
-            rewritten_query=rewritten,
-            span_id=span_id,
-        )
+        if not sources:
+            pipeline_span.set_attribute("output.value", "No relevant information found.")
+            return ChatResponse(
+                answer="I couldn't find relevant information in the Northbrook documents.",
+                sources=[],
+                rewritten_query=rewritten,
+                span_id=span_id,
+            )
 
-    # ─── CONTEXT ASSEMBLY (customization section 6 of 7) ─────
-    # Organize retrieved chunks into coherent reading order.
-    # Groups by source document, sorts by chunk index, inserts
-    # gap markers between non-consecutive chunks.
-    #
-    # The assembly logic lives in pipeline/context/assembler.py.
-    # Customize it there to change grouping, ordering, or format.
-    # ──────────────────────────────────────────────────────────
-    assembled = assemble_context(sources)
+        # ─── CONTEXT ASSEMBLY (customization section 6 of 7) ─────
+        assembled = assemble_context(sources)
 
-    # --- SYSTEM PROMPT HARDENING (defense layer 2) ---
-    # Build prompt sections: conversation history + assembled context + question
-    sections = []
-    recent = managed_history[-6:] if managed_history else []
-    if recent:
-        conversation_lines = []
-        for msg in recent:
-            role_label = "User" if msg["role"] == "user" else "Assistant"
-            conversation_lines.append(f"{role_label}: {msg['content']}")
-        sections.append("## Conversation So Far\n" + "\n\n".join(conversation_lines))
+        # --- SYSTEM PROMPT HARDENING (defense layer 2) ---
+        sections = []
+        recent = managed_history[-6:] if managed_history else []
+        if recent:
+            conversation_lines = []
+            for msg in recent:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                conversation_lines.append(f"{role_label}: {msg['content']}")
+            sections.append("## Conversation So Far\n" + "\n\n".join(conversation_lines))
 
-    sections.append(assembled)  # Context goes into the hardened prompt
+        sections.append(assembled)
 
-    full_context = "\n\n".join(sections)
-    system_prompt = build_hardened_prompt(full_context)
+        full_context = "\n\n".join(sections)
+        system_prompt = build_hardened_prompt(full_context)
 
-    # The user message is just the current question (not the full context)
-    user_message = question
+        user_message = question
 
-    # ─── GENERATION SETTINGS (customization section 7 of 7) ──
-    # Model, temperature, and token limits for Claude.
-    # temperature=0.0 gives deterministic, grounded answers.
-    #
-    # Options to explore:
-    #   - temperature=0.3 for slightly more varied responses
-    #   - max_tokens=2048 for longer answers
-    #   - model="claude-haiku-4-5" for faster/cheaper responses
-    # ──────────────────────────────────────────────────────────
-    answer = call_claude(user_message, system_prompt=system_prompt, temperature=0.0)
+        # ─── GENERATION SETTINGS (customization section 7 of 7) ──
+        with _tracer.start_as_current_span("generate_answer") as gen_span:
+            gen_span.set_attribute("openinference.span.kind", "LLM")
+            gen_span.set_attribute("input.value", user_message)
+            answer = call_claude(user_message, system_prompt=system_prompt, temperature=0.0)
+            gen_span.set_attribute("output.value", answer[:500])
+            gen_span.set_status(StatusCode.OK)
 
-    # --- OUTPUT VALIDATION (defense layer 3) ---
-    source_names = [s.get("metadata", {}).get("source", "") for s in sources]
-    output_ok, output_reason = validate_output(answer, source_names)
-    if not output_ok:
-        return ChatResponse(
-            answer=output_reason,
-            sources=sources,
-            rewritten_query=rewritten,
-            span_id=span_id,
-        )
+        # --- OUTPUT VALIDATION (defense layer 3) ---
+        source_names = [s.get("metadata", {}).get("source", "") for s in sources]
+        output_ok, output_reason = validate_output(answer, source_names)
+        if not output_ok:
+            pipeline_span.set_attribute("output.value", output_reason)
+            return ChatResponse(
+                answer=output_reason,
+                sources=sources,
+                rewritten_query=rewritten,
+                span_id=span_id,
+            )
 
-    return ChatResponse(answer=answer, sources=sources, rewritten_query=rewritten, span_id=span_id)
+        pipeline_span.set_attribute("output.value", answer)
+        return ChatResponse(answer=answer, sources=sources, rewritten_query=rewritten, span_id=span_id)

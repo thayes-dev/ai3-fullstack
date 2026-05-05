@@ -53,7 +53,7 @@ def submit_feedback(span_id: str, feedback_value: int, note: str = "") -> None:
     score = 1.0 if feedback_value == 1 else 0.0
 
     try:
-        client.annotations.add_span_annotation(
+        client.spans.add_span_annotation(
             annotation_name="user-feedback",
             annotator_kind="HUMAN",
             span_id=span_id,
@@ -79,7 +79,7 @@ def get_feedback_summary() -> dict:
         return empty
 
     try:
-        spans_df = client.get_spans_dataframe()
+        spans_df = client.spans.get_spans_dataframe()
     except Exception:
         return empty
 

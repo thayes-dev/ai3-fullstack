@@ -1,7 +1,15 @@
 # Student Configuration -- Personalize your app here!
 # The instructor will NEVER modify this file.
 # TIP: Always wrap values in double quotes to avoid YAML parsing issues.
+app_name: "BrookWise"
+tagline: "Your Northbrook Partners benefits and policies, answered."
+welcome_message: |
+  Welcome to BrookWise - your personal guide to Northbrook Partners benefits, policies, and workplace info.
 
-app_name: "Northbrook Q&A"
-tagline: "Ask questions about Northbrook Partners"
-welcome_message: "Hello! Ask me anything about Northbrook Partners."
+  Try asking:
+
+  - What is the PTO policy?
+  - What health benefits are offered?
+  - How do I request time off?
+
+  Ask anything. Become BrookWise.

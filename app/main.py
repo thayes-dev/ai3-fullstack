@@ -12,7 +12,8 @@ The RAG pipeline is handled by app/rag.py (instructor-managed).
 
 Run with: streamlit run app/main.py
 """
-
+import os
+import uuid
 import sys
 from pathlib import Path
 
@@ -21,26 +22,48 @@ from pathlib import Path
 # correctly regardless of where `streamlit run` is invoked from.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
+# === COPY THIS BLOCK INTO app/main.py — DO NOT RUN THIS CELL ===
+# Goes immediately AFTER `sys.path.insert(0, str(_PROJECT_ROOT))`
+
+# pysqlite3 shim — required for ChromaDB on Streamlit Community Cloud.
+# Community Cloud's system sqlite3 is older than ChromaDB requires.
+# pysqlite3-binary ships a newer sqlite3; we swap it in before chromadb imports.
+# Local Mac dev skips this gracefully (pysqlite3 not installed).
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
 
 import streamlit as st
 import yaml
 from app.branding import apply_branding
 from app.rag import get_response
 
-# ============================================================
-# DEPLOYMENT TODO (Session 4.1)
-# ============================================================
-# When deploying to Streamlit Community Cloud, API keys must NOT
-# be stored in secrets — anyone with the URL could burn your credits.
-# Instead, add a sidebar input that lets each visitor enter their own key:
-#
-#   api_key = st.sidebar.text_input("Anthropic API Key", type="password")
-#   if not api_key:
-#       st.warning("Enter your Anthropic API key to start chatting.")
-#       st.stop()
-#
-# Pass the key to your pipeline (e.g., via st.session_state).
-# See DR-017 for the full pattern.
+# === DEPLOYMENT: API KEYS ===
+with st.sidebar:
+    st.subheader("API Keys")
+    anthropic_key = st.text_input(
+        "Anthropic API Key",
+        type="password",
+        value=os.getenv("ANTHROPIC_API_KEY", ""),
+        help="Get one at console.anthropic.com",
+    )
+    voyage_key = st.text_input(
+        "Voyage API Key",
+        type="password",
+        value=os.getenv("VOYAGE_API_KEY", ""),
+        help="Get one at voyageai.com",
+    )
+
+if not anthropic_key or not voyage_key:
+    st.warning("Enter both API keys in the sidebar to start chatting.")
+    st.stop()
+
+os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+os.environ["VOYAGE_API_KEY"] = voyage_key
+# === END DEPLOYMENT ===
 # ============================================================
 
 # ============================================================

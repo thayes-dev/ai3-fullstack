@@ -28,7 +28,7 @@ from pipeline.eval.adversarial_set import ADVERSARIAL_SET, get_dataset_name
 
 load_dotenv()
 
-DATASET_NAME = get_dataset_name(base="northbrook_adversarial_v1")
+DATASET_NAME = get_dataset_name(base="northbrook_adversarial_v2")
 
 
 def load_attacks(include_student: bool) -> list[dict]:

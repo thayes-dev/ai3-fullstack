@@ -18,17 +18,26 @@ def apply_branding(config: dict) -> None:
     # IMPORTANT: st.set_page_config() MUST be the first st.* call in the app.
     # Do not add any st.write(), st.markdown(), etc. above this line.
     st.set_page_config(
-        page_title=config.get("app_name", "Northbrook Q&A"),
-        page_icon="📋",
+        page_title="BrookWise",
+        page_icon=".streamlit/static/favicon.png",
         layout="wide",
     )
 
-    # Logo -- uncomment and update path after adding your logo to .streamlit/static/
-    # st.logo(".streamlit/static/logo.png")
+    st.sidebar.image(".streamlit/static/logo.png", width=200)
 
-    # Custom CSS -- add your styles here
-    # st.markdown("""
-    # <style>
-    # /* Your custom CSS goes here */
-    # </style>
-    # """, unsafe_allow_html=True)
+    st.markdown("""
+<style>
+[data-testid="stChatMessage"] {
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+[data-testid="stSidebar"] h1 {
+    display: none;
+}
+[data-testid="stSidebar"] p {
+    font-size: 1rem;
+    color: #CAE9FF;
+    font-weight: 500;
+}
+</style>
+""", unsafe_allow_html=True)
